@@ -107,6 +107,35 @@ jobs:
             echo "omitir=1" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Revisar que esten los archivos que el pipeline necesita
+        if: steps.validacion.outputs.omitir == '0'
+        run: |
+          echo "Contenido de la raiz del repositorio:"
+          ls -la
+          falta=0
+          for f in xml_a_csv.py preparar_cliente.py historico_a_xlsx.py catalogo_estaciones.csv index.html; do
+            if [ ! -f "$f" ]; then echo "::error::FALTA el archivo $f en la raiz"; falta=1; fi
+          done
+          # Verifica que los scripts acepten los argumentos que usa este flujo.
+          for arg in --fecha --reporte --historico-conservar; do
+            if ! python3 xml_a_csv.py --help 2>/dev/null | grep -q -- "$arg"; then
+              echo "::error::xml_a_csv.py NO acepta $arg: es una version anterior"
+              falta=1
+            fi
+          done
+          for arg in --max-estaciones --centro --zoom; do
+            if ! python3 preparar_cliente.py --help 2>/dev/null | grep -q -- "$arg"; then
+              echo "::error::preparar_cliente.py NO acepta $arg: es una version anterior"
+              falta=1
+            fi
+          done
+          if [ "$falta" = "1" ]; then
+            echo "Opciones que SI acepta xml_a_csv.py:"
+            python3 xml_a_csv.py --help 2>&1 | head -30
+            exit 1
+          fi
+          echo "Archivos y versiones correctos."
+
       - name: Convertir, acumular y generar el reporte de mercado
         if: steps.validacion.outputs.omitir == '0'
         run: |
@@ -157,10 +186,15 @@ jobs:
         if: always()
         run: |
           {
-            if [ "${{ steps.validacion.outputs.omitir }}" = "0" ]; then
+            if [ "${{ steps.validacion.outputs.omitir }}" = "0" ] && [ -s fallback.csv ]; then
               echo "### Datos actualizados"
               echo ""
               echo "Periodos en fallback.csv: $(cut -d, -f1 fallback.csv | tail -n +2 | sort -u | tr '\n' ' ')"
+            elif [ "${{ steps.validacion.outputs.omitir }}" = "0" ]; then
+              echo "### El origen respondio bien, pero el procesamiento fallo"
+              echo ""
+              echo "La descarga fue valida y aun asi no se genero fallback.csv."
+              echo "Revisa el paso *Revisar que esten los archivos* para ver que falta."
             else
               echo "### Sin datos nuevos"
               echo ""
