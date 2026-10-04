@@ -1,0 +1,9 @@
+# Archivos temporales del pipeline
+precios_del_dia.xml
+places.xml
+diagnostico.txt
+__pycache__/
+*.pyc
+
+# Nunca subir archivos de otros proyectos a este repositorio
+*.xlsx.bak
