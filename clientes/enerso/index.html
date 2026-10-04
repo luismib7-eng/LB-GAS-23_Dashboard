@@ -1132,7 +1132,7 @@ main.wrap{padding-block:22px 40px}
 }
 
 
-/* ---------- Competencia por grupo operador ---------- */
+/* ---------- Competencia directa por marca ---------- */
 .comp{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
 .comp__card{
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);
@@ -1452,6 +1452,37 @@ html[data-theme="dark"] .leaflet-control-attribution a{color:var(--muted)}
 .badge--riesgo{background:var(--premium-soft);color:var(--premium)}
 html[data-theme="dark"] .badge--alto{background:rgba(216,166,74,.16);color:#D8A64A}
 .briefing__linea--patron{margin-top:6px;font-size:12.5px;color:var(--muted)}
+
+/* Capa de referencia regulatoria (TAR) */
+.fin--reg{border-top-color:var(--brand)}
+.fin--reg .fin__titulo::after{
+  content:"referencia";
+  margin-left:8px;padding:2px 7px;border-radius:999px;
+  background:var(--surface-2);color:var(--muted);
+  font-size:9px;letter-spacing:.04em;text-transform:uppercase;
+}
+
+/* Panel de dinámica competitiva */
+.din__kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.din__kpi{background:var(--surface-2);border-radius:var(--radius-sm);padding:12px 14px;border-left:3px solid var(--brand)}
+.din__kpi--alza{border-left-color:var(--premium)}
+.din__kpi--baja{border-left-color:var(--regular)}
+.din__kpi-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.din__kpi-valor{font-family:var(--font-mono);font-size:21px;font-weight:700;color:var(--text);margin-top:3px}
+.din__kpi-pie{font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:2px}
+.din__tabla{margin-top:16px;max-height:360px;overflow-y:auto}
+.din__tabla thead th{position:sticky;top:0;background:var(--surface);z-index:2}
+.conducta{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.conducta--activo{background:var(--premium-soft);color:var(--premium)}
+.conducta--seguidor{background:var(--surface-2);color:var(--muted)}
+.conducta--quieto{background:var(--regular-soft);color:var(--regular)}
+@media (max-width:1080px){ .din__kpis{grid-template-columns:repeat(2,1fr)} }
+
+.din__titulo{font-size:13px;font-weight:700;color:var(--brand);margin:18px 0 8px;display:flex;align-items:baseline;gap:9px}
+.din__titulo:first-child{margin-top:0}
+.din__titulo span{font-size:11px;font-weight:400;color:var(--muted);font-family:var(--font-mono)}
+html[data-theme="dark"] .din__titulo{color:#8FB6E8}
+.din__nota{font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px;max-width:88ch}
 </style>
 </head>
 <body>
@@ -1754,13 +1785,32 @@ html[data-theme="dark"] .badge--alto{background:rgba(216,166,74,.16);color:#D8A6
         <p class="panel__sub" id="profecoSub">Precios por marca y extremos en las 8 regiones de la Política de Almacenamiento.</p>
       </div>
       <div class="segmented segmented--sm" role="tablist" aria-label="Vista del reporte">
-        <button class="seg seg--regular is-active" role="tab" data-prof="marcas">Por marca</button>
+        <button class="seg seg--regular is-active" role="tab" data-prof="marcas">Por operador</button>
         <button class="seg seg--regular" role="tab" data-prof="regiones">Por región</button>
+        <button class="seg seg--regular" role="tab" data-prof="dinamica">Dinámica</button>
       </div>
     </div>
 
     <div id="profMarcas">
       <div class="chartbox"><canvas id="chartMarcas"></canvas><p class="empty" id="emptyMarcas" hidden></p></div>
+    </div>
+
+    <div id="profDinamica" hidden>
+      <h3 class="din__titulo">Patrón semanal del mercado <span id="dinRango"></span></h3>
+      <div class="chartbox chartbox--short"><canvas id="chartSemana"></canvas>
+        <p class="empty" id="emptySemana" hidden></p></div>
+      <p class="din__nota" id="dinSemanaNota"></p>
+
+      <h3 class="din__titulo">Movimientos por estación <span id="dinCortes"></span></h3>
+      <div class="din__kpis" id="dinKpis"></div>
+      <div class="chartbox chartbox--short"><canvas id="chartDinamica"></canvas>
+        <p class="empty" id="emptyDinamica" hidden></p></div>
+      <div class="tablebox din__tabla">
+        <table class="table"><thead><tr>
+          <th>Operador</th><th class="is-num">Estaciones</th><th class="is-num">Movimientos</th>
+          <th class="is-num">Alzas</th><th class="is-num">Bajas</th><th>Conducta</th>
+        </tr></thead><tbody id="dinBody"></tbody></table>
+      </div>
     </div>
 
     <div id="profRegiones" hidden>
@@ -2023,7 +2073,7 @@ window.APP_CONFIG = {
     origin: ""
   };
 
-  var charts = { trend: null, compare: null, hist: null, marcas: null };
+  var charts = { trend: null, compare: null, hist: null, marcas: null, dinamica: null, semana: null };
   var $ = function (id) { return document.getElementById(id); };
 
   /* ---------------------------------------------------------
@@ -2368,21 +2418,6 @@ window.APP_CONFIG = {
   /* Devuelve { municipio, estado } o null. Solo se usa cuando el catálogo no
      aporta el dato, y prefiere no responder antes que responder mal: una
      ubicación equivocada contamina promedios locales, semáforo y simulador. */
-  function inferirUbicacion(direccion) {
-    var t = normText(direccion);
-    if (!t || t.indexOf(",") === -1) return null;
-    var k, estado = "", municipio = "";
-    for (k in MUNICIPIOS) {
-      if (MUNICIPIOS.hasOwnProperty(k) && buscaEnRanuras(t, k)) {
-        municipio = MUNICIPIO_NOMBRE[k] || titleCase(k); estado = MUNICIPIOS[k];
-        break;
-      }
-    }
-    for (var i = 0; i < ESTADOS.length && !estado; i++) {
-      if (buscaEnRanuras(t, ESTADOS[i])) estado = ESTADO_NOMBRE[ESTADOS[i]] || titleCase(ESTADOS[i]);
-    }
-    return estado ? { municipio: municipio, estado: estado } : null;
-  }
 
   /* Sucursales propias declaradas en config.js. Se resuelve una sola vez. */
   /* ---------------------------------------------------------
@@ -3295,11 +3330,11 @@ window.APP_CONFIG = {
         deltaEl.textContent = "Sin periodo anterior para comparar";
       }
 
-      var b = CFG.BENCHMARK && CFG.BENCHMARK[p];
+      var ref = benchVigente(p), b = ref ? ref.valor : null;
       var parts = [vals.length.toLocaleString("es-MX") + " estaciones con precio"];
       if (mean !== null && b) {
         var diff = mean - b;
-        parts.push((diff >= 0 ? "+" : "") + diff.toFixed(2) + " vs. " + CFG.BENCHMARK.label + " (" + money(b) + ")");
+        parts.push((diff >= 0 ? "+" : "") + diff.toFixed(2) + " vs. " + ref.etiqueta + " (" + money(b) + ")");
       }
       benchEl.textContent = parts.join(" · ");
     });
@@ -3412,7 +3447,7 @@ window.APP_CONFIG = {
     medEl.classList.toggle("is-right", pos(med) > 76);
     medEl.querySelector("span").textContent = money(med);
 
-    var b = CFG.BENCHMARK && CFG.BENCHMARK[p];
+    var refRiel = benchVigente(p), b = refRiel ? refRiel.valor : null;
     var benchEl = $("railBench");
     if (b && b >= min && b <= max) {
       benchEl.style.display = "block";
@@ -3437,7 +3472,7 @@ window.APP_CONFIG = {
      --------------------------------------------------------- */
 
   function chartTheme() {
-    return {
+    var t = {
       text: cssVar("--text"),
       muted: cssVar("--muted"),
       line: cssVar("--line"),
@@ -3446,6 +3481,13 @@ window.APP_CONFIG = {
       premium: cssVar("--premium"),
       diesel: cssVar("--diesel")
     };
+    if (window.Chart && Chart.defaults) {
+      Chart.defaults.color = t.muted;
+      Chart.defaults.borderColor = t.line;
+      Chart.defaults.font = Chart.defaults.font || {};
+      Chart.defaults.font.family = "IBM Plex Sans";
+    }
+    return t;
   }
 
   function baseOptions(t) {
@@ -3764,6 +3806,23 @@ window.APP_CONFIG = {
      10. Render general
      --------------------------------------------------------- */
 
+  /* Referencia nacional vigente: se toma del último corte del histórico en
+     lugar de un valor capturado a mano, que se desactualiza sin aviso.
+     CFG.BENCHMARK queda solo como respaldo si no hay histórico cargado. */
+  function benchVigente(prod) {
+    // El histórico guarda el producto en minúsculas y sin acento.
+    var col = prod === "diesel" ? "diesel" : prod;
+    var nac = (historico || []).filter(function (h) {
+      return h.ambito === "nacional" && h.producto === col && isFinite(h.promedio);
+    });
+    if (nac.length) {
+      nac.sort(function (a, b) { return a.fecha < b.fecha ? 1 : -1; });
+      return { valor: nac[0].promedio, etiqueta: "Promedio nacional · " + fmtPeriod(nac[0].fecha) };
+    }
+    var b = CFG.BENCHMARK && CFG.BENCHMARK[prod];
+    return b ? { valor: b, etiqueta: (CFG.BENCHMARK.label || "Referencia") } : null;
+  }
+
   function render() {
     computeMercado();
     state.dimension = detectDimension();
@@ -3894,35 +3953,283 @@ window.APP_CONFIG = {
 
   var profVista = "marcas";
 
+  /* ---------------------------------------------------------
+     Dinámica competitiva
+
+     Con varios cortes cargados se puede medir algo que un promedio nunca
+     muestra: quién mueve precio, con qué frecuencia y en qué dirección.
+     Un operador que no se mueve en cuatro cortes no está compitiendo por
+     precio; uno que mueve a diario está persiguiendo volumen.
+     --------------------------------------------------------- */
+
+  function calcularDinamica(rows) {
+    var prod = state.product;
+    var fechas = periods().slice().sort();
+    if (fechas.length < 2) return null;
+
+    var alcance = {};
+    rows.forEach(function (r) { alcance[permitKey(r.permiso)] = true; });
+
+    var serie = {}, nombre = {};
+    state.rows.forEach(function (r) {
+      var k = permitKey(r.permiso);
+      if (!alcance[k] || r[prod] === null) return;
+      (serie[k] = serie[k] || {})[r.fecha] = r[prod];
+      if (r.estacion) nombre[k] = r.estacion;
+    });
+
+    var porFecha = {}, totalAlzas = 0, totalBajas = 0, comparables = 0, movimientos = 0;
+    var porOperador = {};
+
+    for (var i = 1; i < fechas.length; i++) {
+      porFecha[fechas[i]] = { movidos: 0, comparables: 0, alzas: 0, bajas: 0 };
+      for (var k in serie) {
+        var hoy = serie[k][fechas[i]], ayer = serie[k][fechas[i - 1]];
+        if (hoy === undefined || ayer === undefined) continue;
+        porFecha[fechas[i]].comparables++;
+        comparables++;
+        var op = nombre[k] || "Sin razón social";
+        porOperador[op] = porOperador[op] || { estaciones: {}, mov: 0, alzas: 0, bajas: 0 };
+        porOperador[op].estaciones[k] = true;
+        if (Math.abs(hoy - ayer) > 0.005) {
+          porFecha[fechas[i]].movidos++;
+          movimientos++;
+          porOperador[op].mov++;
+          if (hoy > ayer) { porFecha[fechas[i]].alzas++; totalAlzas++; porOperador[op].alzas++; }
+          else { porFecha[fechas[i]].bajas++; totalBajas++; porOperador[op].bajas++; }
+        }
+      }
+    }
+    if (!comparables) return null;
+
+    var tabla = Object.keys(porOperador).map(function (op) {
+      var d = porOperador[op];
+      var n = Object.keys(d.estaciones).length;
+      var oportunidades = n * (fechas.length - 1);
+      return { operador: op, estaciones: n, mov: d.mov, alzas: d.alzas, bajas: d.bajas,
+               tasa: oportunidades ? d.mov / oportunidades : 0 };
+    }).filter(function (d) { return d.estaciones >= 2; })
+      .sort(function (a, b) { return b.tasa - a.tasa || b.estaciones - a.estaciones; })
+      .slice(0, 12);
+
+    return {
+      fechas: fechas.slice(1), porFecha: porFecha, tabla: tabla,
+      comparables: comparables, movimientos: movimientos,
+      alzas: totalAlzas, bajas: totalBajas,
+      pct: comparables ? Math.round(movimientos / comparables * 100) : 0,
+      estaciones: Object.keys(serie).length, cortes: fechas.length
+    };
+  }
+
+  /* Patrón semanal calculado sobre TODO el histórico (45 días y creciendo).
+     El histórico guarda promedios por ámbito, no precios por estación, así que
+     esta capa describe al mercado completo; la conducta de cada operador se
+     mide con los cortes del padrón, más abajo. */
+  function renderPatronSemanal() {
+    destroy("semana");
+    var vacio = $("emptySemana"), nota = $("dinSemanaNota"), rango = $("dinRango");
+    if (!vacio) return;
+
+    var prod = state.product === "diesel" ? "diesel" : state.product;
+    var ambito = "nacional", clave = "MX", etiqueta = "nacional";
+    if (state.estado && state.estado !== SIN_UBICACION) {
+      var hayEstado = historico.some(function (h) {
+        return h.ambito === "estado" && h.clave === state.estado && h.producto === prod;
+      });
+      if (hayEstado) { ambito = "estado"; clave = state.estado; etiqueta = state.estado; }
+    }
+
+    var serie = historico.filter(function (h) {
+      return h.ambito === ambito && h.clave === clave && h.producto === prod;
+    }).sort(function (a, b) { return a.fecha < b.fecha ? -1 : 1; });
+
+    if (serie.length < 8) {
+      vacio.hidden = false;
+      vacio.textContent = "El histórico aún no tiene suficientes días para un patrón semanal.";
+      if (nota) nota.textContent = "";
+      if (rango) rango.textContent = "";
+      return;
+    }
+    vacio.hidden = true;
+
+    var dias = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+    var acum = [[], [], [], [], [], [], []];
+    for (var i = 1; i < serie.length; i++) {
+      var d = serie[i].promedio - serie[i - 1].promedio;
+      var wd = new Date(serie[i].fecha + "T12:00:00").getDay();
+      acum[wd].push(d);
+    }
+    var orden = [1, 2, 3, 4, 5, 6, 0];          // lunes a domingo
+    var datos = orden.map(function (wd) {
+      return acum[wd].length ? acum[wd].reduce(function (a, b) { return a + b; }, 0) / acum[wd].length : 0;
+    });
+    var etiquetas = orden.map(function (wd) { return dias[wd]; });
+
+    var mayor = 0, idx = 0;
+    datos.forEach(function (v, i) { if (Math.abs(v) > Math.abs(mayor)) { mayor = v; idx = i; } });
+
+    if (rango) rango.textContent = serie.length + " días · " + fmtPeriod(serie[0].fecha) +
+      " a " + fmtPeriod(serie[serie.length - 1].fecha) + " · " + etiqueta;
+
+    var t = chartTheme(), opts = baseOptions(t);
+    opts.scales.y.beginAtZero = true;
+    opts.scales.y.ticks.callback = function (v) { return (v >= 0 ? "+" : "") + v.toFixed(3); };
+    opts.plugins.legend.display = false;
+    opts.plugins.tooltip.callbacks.label = function (ctx) {
+      var wd = orden[ctx.dataIndex];
+      return "Cambio medio " + (ctx.parsed.y >= 0 ? "+" : "") + ctx.parsed.y.toFixed(4) +
+        " · " + acum[wd].length + " observaciones";
+    };
+
+    charts.semana = new Chart($("chartSemana"), {
+      type: "bar",
+      data: {
+        labels: etiquetas,
+        datasets: [{
+          label: "Cambio medio del precio",
+          data: datos.map(function (v) { return +v.toFixed(4); }),
+          backgroundColor: datos.map(function (v) { return v > 0.0005 ? t.premium : v < -0.0005 ? t.regular : t.muted; }),
+          borderRadius: 4
+        }]
+      },
+      options: opts
+    });
+
+    if (nota) {
+      nota.textContent = Math.abs(mayor) < 0.0005
+        ? "En " + etiqueta + " no se detecta un día de la semana con movimiento sistemático: los ajustes se reparten parejo."
+        : "El " + etiquetas[idx] + " concentra el movimiento del mercado en " + etiqueta + ": el precio promedio " +
+          (mayor > 0 ? "sube" : "baja") + " " + Math.abs(mayor).toFixed(4) +
+          " en promedio ese día, frente a variaciones cercanas a cero el resto de la semana. " +
+          "Es el día en que conviene revisar antes de fijar precio.";
+    }
+  }
+
+  function renderDinamica(rows) {
+    destroy("dinamica");
+    renderPatronSemanal();
+    var cortesEl = $("dinCortes");
+    if (cortesEl) cortesEl.textContent = periods().length + " cortes del padrón";
+    var kpis = $("dinKpis"), cuerpo = $("dinBody"), vacio = $("emptyDinamica");
+    if (!kpis) return;
+
+    var d = calcularDinamica(rows);
+    if (!d) {
+      kpis.innerHTML = "";
+      cuerpo.innerHTML = "";
+      vacio.hidden = false;
+      vacio.textContent = "Se necesitan al menos dos cortes cargados en el padrón para medir " +
+        "movimientos. El flujo diario los acumula solo.";
+      return;
+    }
+    vacio.hidden = true;
+
+    var quietas = d.comparables - d.movimientos;
+    kpis.innerHTML =
+      '<div class="din__kpi"><p class="din__kpi-label">Movilidad del mercado</p>' +
+        '<p class="din__kpi-valor">' + d.pct + '%</p>' +
+        '<p class="din__kpi-pie">de las comparaciones registraron cambio en ' + (d.cortes - 1) +
+        ' transición(es)</p></div>' +
+      '<div class="din__kpi din__kpi--alza"><p class="din__kpi-label">Alzas</p>' +
+        '<p class="din__kpi-valor">' + d.alzas.toLocaleString("es-MX") + '</p>' +
+        '<p class="din__kpi-pie">' + (d.movimientos ? Math.round(d.alzas / d.movimientos * 100) : 0) +
+        '% de los movimientos</p></div>' +
+      '<div class="din__kpi din__kpi--baja"><p class="din__kpi-label">Bajas</p>' +
+        '<p class="din__kpi-valor">' + d.bajas.toLocaleString("es-MX") + '</p>' +
+        '<p class="din__kpi-pie">' + (d.movimientos ? Math.round(d.bajas / d.movimientos * 100) : 0) +
+        '% de los movimientos</p></div>' +
+      '<div class="din__kpi"><p class="din__kpi-label">Sin moverse</p>' +
+        '<p class="din__kpi-valor">' + quietas.toLocaleString("es-MX") + '</p>' +
+        '<p class="din__kpi-pie">estaciones que sostuvieron precio</p></div>';
+
+    cuerpo.innerHTML = d.tabla.length ? d.tabla.map(function (o) {
+      var conducta = o.tasa >= 0.4 ? ["activo", "Mueve seguido"]
+                   : o.tasa > 0 ? ["seguidor", "Ajusta ocasionalmente"]
+                   : ["quieto", "Sostiene precio"];
+      var nombre = o.operador.length > 42 ? o.operador.slice(0, 40) + "…" : o.operador;
+      return "<tr><td>" + esc(nombre) + "</td>" +
+        '<td class="is-num">' + o.estaciones + "</td>" +
+        '<td class="is-num">' + o.mov + "</td>" +
+        '<td class="is-num">' + o.alzas + "</td>" +
+        '<td class="is-num">' + o.bajas + "</td>" +
+        '<td><span class="conducta conducta--' + conducta[0] + '">' + conducta[1] + "</span></td></tr>";
+    }).join("") : '<tr><td colspan="6" class="na">Sin operadores con dos o más estaciones en la selección.</td></tr>';
+
+    var t = chartTheme(), opts = baseOptions(t);
+    opts.scales.y.beginAtZero = true;
+    opts.scales.y.ticks.callback = function (v) { return v + "%"; };
+    opts.plugins.tooltip.callbacks.label = function (ctx) {
+      var f = d.porFecha[d.fechas[ctx.dataIndex]];
+      return ctx.dataset.label + ": " + ctx.parsed.y + "% (" +
+        (ctx.datasetIndex === 0 ? f.alzas : f.bajas) + " de " + f.comparables + ")";
+    };
+
+    charts.dinamica = new Chart($("chartDinamica"), {
+      type: "bar",
+      data: {
+        labels: d.fechas.map(fmtPeriod),
+        datasets: [
+          { label: "Alzas", stack: "m", backgroundColor: t.premium, borderRadius: 3,
+            data: d.fechas.map(function (f) { var x = d.porFecha[f];
+              return x.comparables ? +(x.alzas / x.comparables * 100).toFixed(1) : 0; }) },
+          { label: "Bajas", stack: "m", backgroundColor: t.regular, borderRadius: 3,
+            data: d.fechas.map(function (f) { var x = d.porFecha[f];
+              return x.comparables ? +(x.bajas / x.comparables * 100).toFixed(1) : 0; }) }
+        ]
+      },
+      options: opts
+    });
+  }
+
   function renderProfeco(rows) {
     var prod = state.product;
     $("profecoSub").textContent = profVista === "marcas"
-      ? "Precio promedio y diferencial por marca · " + PRODUCTS[prod].label +
+      ? "Precio promedio por grupo operador · " + PRODUCTS[prod].label +
         " · " + (state.period ? fmtPeriod(state.period) : "todos los periodos")
+      : profVista === "dinamica"
+      ? "Quién mueve precio, con qué frecuencia y en qué dirección · " + PRODUCTS[prod].label
       : "Extremos y dispersión en las 8 regiones de la Política Pública de Almacenamiento Mínimo · " +
         PRODUCTS[prod].label;
 
     if (profVista === "marcas") renderMarcasChart(rows);
+    else if (profVista === "dinamica") renderDinamica(rows);
     else renderRegiones(rows);
   }
 
   function renderMarcasChart(rows) {
     destroy("marcas");
     var el = $("emptyMarcas"), prod = state.product;
-    var grupos = {};
+
+    /* Mismo criterio que el panel de competencia: si la columna Marca del
+       catálogo no cubre al menos el 15% de la selección, se agrupa por razón
+       social, que es lo que el padrón de la CNE sí publica. */
+    var porMarca = {}, porGrupo = {}, conMarca = 0, conPrecio = 0;
     rows.forEach(function (r) {
-      if (!r._marca || r[prod] === null) return;
-      (grupos[r._marca] = grupos[r._marca] || []).push(r[prod]);
+      if (r[prod] === null) return;
+      conPrecio++;
+      if (r._marca) { conMarca++; (porMarca[r._marca] = porMarca[r._marca] || []).push(r[prod]); }
+      var razon = (r.estacion || "").trim();
+      if (razon && razon !== SIN_DATO_TXT) (porGrupo[razon] = porGrupo[razon] || []).push(r[prod]);
     });
-    var lista = Object.keys(grupos).map(function (k) {
-      var v = grupos[k].slice().sort(function (a, b) { return a - b; });
-      return { marca: k, avg: avg(v), min: v[0], n: v.length };
-    }).sort(function (a, b) { return b.avg - a.avg; });
+
+    var porRazon = !conPrecio || (conMarca / conPrecio) < 0.15;
+    var fuente = porRazon ? porGrupo : porMarca;
+    var minimo = porRazon ? 3 : 1;
+
+    var lista = Object.keys(fuente)
+      .filter(function (k) { return fuente[k].length >= minimo; })
+      .map(function (k) {
+        var v = fuente[k].slice().sort(function (a, b) { return a - b; });
+        return { marca: k, avg: avg(v), min: v[0], n: v.length };
+      })
+      .sort(function (a, b) { return b.n - a.n; })
+      .slice(0, 12)
+      .sort(function (a, b) { return b.avg - a.avg; });
 
     if (lista.length < 2) {
       el.hidden = false;
-      el.textContent = "Se necesitan al menos dos marcas reconocidas en la selección. " +
-        "El padrón publica la razón social, no la bandera: llena la columna Marca del catálogo para ampliar la cobertura.";
+      el.textContent = "La selección no tiene suficientes operadores con presencia múltiple. " +
+        "Amplía el filtro a un estado o al país para ver la comparación.";
       return;
     }
     el.hidden = true;
@@ -3931,11 +4238,20 @@ window.APP_CONFIG = {
     var t = chartTheme(), opts = baseOptions(t);
     opts.scales.x.stacked = false;
     opts.scales.y.beginAtZero = false;
+    /* El eje arranca cerca del mínimo: con precios entre $22 y $25, una escala
+       desde cero convierte diferencias reales en barras idénticas. */
+    var menor = Math.min.apply(null, lista.map(function (d) { return d.avg; }));
+    opts.scales.y.min = Math.max(0, Math.floor((menor - 0.6) * 2) / 2);
     opts.plugins.tooltip.callbacks.label = function (ctx) {
       var d = lista[ctx.dataIndex];
       return ctx.datasetIndex === 0
         ? "Promedio $" + d.avg.toFixed(2) + " · " + d.n.toLocaleString("es-MX") + " estaciones"
         : "Diferencial vs. el más bajo del periodo: $" + (d.avg - base).toFixed(2);
+    };
+    opts.scales.x.ticks = opts.scales.x.ticks || {};
+    opts.scales.x.ticks.callback = function (v, i) {
+      var n = lista[i] ? lista[i].marca : "";
+      return n.length > 22 ? n.slice(0, 20) + "…" : n;
     };
 
     charts.marcas = new Chart($("chartMarcas"), {
@@ -3944,10 +4260,7 @@ window.APP_CONFIG = {
         labels: lista.map(function (d) { return d.marca; }),
         datasets: [
           { label: "Precio promedio", data: lista.map(function (d) { return +d.avg.toFixed(2); }),
-            backgroundColor: t[state.product], borderRadius: 4 },
-          { label: "Diferencial vs. mínimo del periodo",
-            data: lista.map(function (d) { return +(d.avg - base).toFixed(2); }),
-            backgroundColor: t.muted, borderRadius: 4 }
+            backgroundColor: t[state.product], borderRadius: 4 }
         ]
       },
       options: opts
@@ -5059,6 +5372,7 @@ window.APP_CONFIG = {
         profVista = b.getAttribute("data-prof");
         $("profMarcas").hidden = profVista !== "marcas";
         $("profRegiones").hidden = profVista !== "regiones";
+        $("profDinamica").hidden = profVista !== "dinamica";
         renderProfeco(scoped());
       });
     });
@@ -5148,6 +5462,9 @@ window.APP_CONFIG = {
       var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
       document.documentElement.setAttribute("data-theme", next);
       try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+      Object.keys(charts).forEach(function (k) { destroy(k); });
+      chartTheme();                    // reaplica los valores por omisión
+      if (mapaListo) { mapaEncuadrado = false; }
       if (state.rows.length) render();
     });
 
@@ -5188,7 +5505,8 @@ window.APP_CONFIG = {
     if (CFG.SUBTITLE) $("appSubtitle").textContent = CFG.SUBTITLE;
     $("footerMethod").textContent = CFG.METODOLOGIA || "";
     if (CFG.REPO_URL) $("repoLink").href = CFG.REPO_URL;
-    if (CFG.BENCHMARK && CFG.BENCHMARK.label) $("railBenchChip").textContent = CFG.BENCHMARK.label;
+    var refChip = benchVigente(state.product);
+    if (refChip) $("railBenchChip").textContent = refChip.etiqueta;
 
     try {
       var saved = localStorage.getItem(THEME_KEY);

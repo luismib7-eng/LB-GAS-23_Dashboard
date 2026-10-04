@@ -932,6 +932,75 @@ def generar_reporte(filas, ruta, fecha, marcas):
     return {"filas": len(salida), "total": len(previas) + len(salida)}
 
 
+COLUMNAS_MOVIMIENTOS = ["Fecha", "Permiso CRE", "Estacion", "Estado", "Municipio",
+                        "Producto", "Anterior", "Nuevo", "Cambio"]
+
+
+def registrar_movimientos(filas, salida_padron, ruta, fecha, conservar=400):
+    """
+    Bitácora de cambios de precio por estación.
+
+    El histórico guarda promedios por ámbito, no precios por estación: con eso
+    no se puede saber QUIÉN movió. Guardar el padrón completo todos los días
+    serían decenas de megabytes, pero los cambios son apenas el 2% diario, así
+    que registrar solo los movimientos cuesta unos cientos de kilobytes al año
+    y permite reconstruir la conducta de cada operador.
+    """
+    if not ruta or not fecha:
+        return None
+
+    # Precios del corte anterior, tomados del padrón acumulado.
+    previos, fecha_previa = {}, ""
+    if os.path.exists(salida_padron) and os.path.getsize(salida_padron) > 0:
+        with io.open(salida_padron, encoding="utf-8-sig", newline="") as fh:
+            anteriores = [f for f in csv.DictReader(fh) if (f.get("Fecha") or "").strip() != fecha]
+        fechas = sorted({(f.get("Fecha") or "").strip() for f in anteriores if f.get("Fecha")})
+        if fechas:
+            fecha_previa = fechas[-1]
+            for f in anteriores:
+                if (f.get("Fecha") or "").strip() == fecha_previa:
+                    previos[clave_permiso(f.get("Permiso CRE", ""))] = f
+
+    nuevos = []
+    if previos:
+        for f in filas:
+            antes = previos.get(clave_permiso(f.get("Permiso CRE", "")))
+            if not antes:
+                continue
+            for prod in ("Regular", "Premium", "Diesel"):
+                try:
+                    a, b = float(antes[prod]), float(f[prod])
+                except (TypeError, ValueError, KeyError):
+                    continue
+                if abs(b - a) < 0.005:
+                    continue
+                nuevos.append({
+                    "Fecha": fecha, "Permiso CRE": f.get("Permiso CRE", ""),
+                    "Estacion": f.get("Estacion", ""), "Estado": f.get("Estado", ""),
+                    "Municipio": f.get("Municipio", ""), "Producto": prod,
+                    "Anterior": "%.2f" % a, "Nuevo": "%.2f" % b, "Cambio": "%+.2f" % (b - a),
+                })
+
+    previas = []
+    if os.path.exists(ruta) and os.path.getsize(ruta) > 0:
+        with io.open(ruta, encoding="utf-8-sig", newline="") as fh:
+            previas = [f for f in csv.DictReader(fh) if (f.get("Fecha") or "").strip() != fecha]
+
+    todas = previas + nuevos
+    fechas = sorted({(f.get("Fecha") or "").strip() for f in todas if f.get("Fecha")})
+    if conservar and len(fechas) > conservar:
+        vigentes = set(fechas[-conservar:])
+        todas = [f for f in todas if (f.get("Fecha") or "").strip() in vigentes]
+
+    with io.open(ruta, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=COLUMNAS_MOVIMIENTOS, lineterminator="\n", extrasaction="ignore")
+        w.writeheader()
+        for f in todas:
+            w.writerow(dict((c, f.get(c, "")) for c in COLUMNAS_MOVIMIENTOS))
+
+    return {"nuevos": len(nuevos), "total": len(todas), "contra": fecha_previa}
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Convierte el XML oficial de precios de la CNE al CSV del tablero.")
@@ -950,6 +1019,10 @@ def main():
                     help="Cortes diarios a conservar en el histórico de promedios (por omisión 120)")
     ap.add_argument("--exportar-catalogo", default="",
                     help="Escribe el catálogo leído a este CSV (útil para convertir el XML de estaciones de la CNE)")
+    ap.add_argument("--movimientos", default="",
+                    help="Bitácora de cambios de precio por estación (quién movió y cuánto)")
+    ap.add_argument("--movimientos-conservar", type=int, default=400,
+                    help="Días de bitácora a conservar")
     ap.add_argument("--reporte", default="",
                     help="CSV con las métricas estilo Profeco (nacional, por marca y por región)")
     ap.add_argument("--marcas", default="BP,TOTALENERGIES,REPSOL,SHELL,CHEVRON,EXXONMOBIL,GULF,G500,OXXO GAS,ARCO NORTE",
@@ -1000,6 +1073,16 @@ def main():
     if hist:
         print("Histórico de promedios:   %s (%s · %d periodo(s))" %
               (args.historico, hist["accion"], hist["periodos"]))
+
+    if args.movimientos:
+        mv = registrar_movimientos(filas, args.salida, args.movimientos, st["fecha"],
+                                   args.movimientos_conservar)
+        if mv:
+            if mv["contra"]:
+                print("Movimientos de precio:    %d nuevos contra el corte del %s (%d en la bitácora)"
+                      % (mv["nuevos"], mv["contra"], mv["total"]))
+            else:
+                print("Movimientos de precio:    sin corte anterior para comparar; la bitácora inicia hoy")
 
     if args.reporte:
         rep_ = generar_reporte(filas, args.reporte, st["fecha"],
