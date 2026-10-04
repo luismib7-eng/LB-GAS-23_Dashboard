@@ -1132,7 +1132,7 @@ main.wrap{padding-block:22px 40px}
 }
 
 
-/* ---------- Competencia directa por marca ---------- */
+/* ---------- Competencia por grupo operador ---------- */
 .comp{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px}
 .comp__card{
   background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);
@@ -1650,7 +1650,7 @@ html[data-theme="dark"] .badge--alto{background:rgba(216,166,74,.16);color:#D8A6
   <!-- ══════════════ COMPETENCIA DIRECTA ══════════════ -->
   <section class="panel" aria-label="Monitoreo de competencia directa">
     <div class="panel__head">
-      <h2 class="panel__title">Competencia directa por marca</h2>
+      <h2 class="panel__title">Competencia por grupo operador</h2>
       <p class="panel__sub" id="compNote">Promedio por marca en la selección activa.</p>
     </div>
     <div class="comp" id="compCards"></div>
@@ -2602,6 +2602,63 @@ window.APP_CONFIG = {
     return url + (url.indexOf("?") > -1 ? "&" : "?") + "t=" + Date.now();
   }
 
+  /* ---------------------------------------------------------
+     Capa de referencia regulatoria (TAR)
+
+     La TAR es el precio de venta de primera mano en la Terminal de
+     Almacenamiento y Reparto. NO es el costo del gasolinero: no incluye
+     descuentos por volumen, pronto pago ni flete en autotanque, que juntos
+     mueven entre $0.30 y $0.80 por litro.
+
+     Por eso esta capa NUNCA sustituye el costo que captura el usuario en el
+     simulador. Sirve para una sola pregunta: cómo luce la estación frente al
+     indicador con que se construyen los comparativos oficiales de margen.
+     --------------------------------------------------------- */
+
+  var tarRef = null;   // { estado: { Regular: precio, ... } }, null si no hay archivo
+
+  function cargarTar(texto) {
+    var filas = parseCsv(texto);
+    if (!filas.length) return null;
+    var mapa = {}, vigencia = "", total = 0;
+    var valor = function (f, nombres) {
+      for (var k in f) {
+        var kn = normText(k).replace(/[^a-z0-9]/g, "");
+        for (var i = 0; i < nombres.length; i++) {
+          if (kn === nombres[i]) return f[k];
+        }
+      }
+      return "";
+    };
+    filas.forEach(function (f) {
+      var estado = String(valor(f, ["estado", "entidad"]) || "").trim();
+      var prod = normText(valor(f, ["producto", "combustible"]));
+      var precio = toNumber(valor(f, ["preciotar", "tar", "precio"]));
+      if (precio !== null && (precio < 5 || precio > 60)) precio = null;
+      var v = String(valor(f, ["vigencia", "fecha"]) || "").trim();
+      if (v && !vigencia) vigencia = v;
+      var col = prod.indexOf("regular") > -1 ? "Regular"
+              : prod.indexOf("premium") > -1 ? "Premium"
+              : prod.indexOf("diesel") > -1 || prod.indexOf("diésel") > -1 ? "Diesel" : "";
+      if (!estado || !col || precio === null) return;
+      (mapa[estado] = mapa[estado] || {})[col] = precio;
+      total++;
+    });
+    return total ? { mapa: mapa, vigencia: vigencia, registros: total } : null;
+  }
+
+  /* Margen bruto estimado contra la TAR de su entidad. Devuelve null cuando no
+     hay referencia para ese estado y producto: sin dato no se inventa nada. */
+  function margenRegulatorio(r, prod) {
+    if (!tarRef || r[prod] === null || !r.estado) return null;
+    var fila = tarRef.mapa[r.estado];
+    if (!fila) return null;
+    var col = PRODUCTS[prod].label === "Diésel" ? "Diesel" : PRODUCTS[prod].label;
+    var tar = fila[col];
+    if (tar === undefined || tar === null) return null;
+    return { tar: tar, margen: r[prod] - tar, vigencia: tarRef.vigencia };
+  }
+
   var sirvioCache = false;
 
   function fetchText(url) {
@@ -2662,6 +2719,13 @@ window.APP_CONFIG = {
     setStatus("loading", "Cargando", "");
     btn.classList.add("is-spinning");
     btn.disabled = true;
+
+    var tarUrl = CFG.TAR_CSV && CFG.TAR_CSV.trim();
+    if (tarUrl) {
+      fetchText(tarUrl)
+        .then(function (t) { tarRef = cargarTar(t); if (tarRef) render(); })
+        .catch(function () { tarRef = null; });   // sin archivo, la capa no existe
+    }
 
     var histUrl = CFG.HISTORY_CSV && CFG.HISTORY_CSV.trim();
     if (histUrl) {
@@ -3731,20 +3795,49 @@ window.APP_CONFIG = {
      9 bis. Monitoreo de competencia directa por marca
      --------------------------------------------------------- */
 
+  /* ---------------------------------------------------------
+     Competencia por grupo operador
+
+     El padrón de la CNE publica la razón social, no la bandera comercial, así
+     que buscar marcas (Pemex, Shell, BP) solo encuentra a las pocas que operan
+     con razón social propia. Pero la razón social sí revela algo más útil:
+     qué grupos operan varias estaciones en la zona y a qué precio las tienen.
+
+     Con la columna Marca capturada en el catálogo se agrupa por marca; sin
+     ella, por grupo operador, que es lo que hoy entregan los datos.
+     --------------------------------------------------------- */
+
+  var SIN_DATO_TXT = "No especificado";
+  var COMP_MAX = 8;
+
   function renderCompetencia(rows) {
     var caja = $("compCards"), nota = $("compNote");
     if (!caja) return;
     var p = state.product;
 
-    var grupos = {};
+    // 1. Agrupación por marca capturada; si no hay, por razón social.
+    var porMarca = {}, porGrupo = {}, conMarca = 0, conPrecio = 0;
     rows.forEach(function (r) {
-      if (!r._marca || r[p] === null) return;
-      (grupos[r._marca] = grupos[r._marca] || []).push(r[p]);
+      if (r[p] === null) return;
+      conPrecio++;
+      if (r._marca) { conMarca++; (porMarca[r._marca] = porMarca[r._marca] || []).push(r[p]); }
+      var razon = (r.estacion || "").trim();
+      if (razon && razon !== SIN_DATO_TXT) (porGrupo[razon] = porGrupo[razon] || []).push(r[p]);
     });
 
-    var lista = Object.keys(grupos).map(function (k) {
-      return { marca: k, avg: avg(grupos[k]), n: grupos[k].length };
-    }).sort(function (a, b) { return a.avg - b.avg; });
+    /* Se usa el modo marca solo si cubre al menos el 15% de la selección. Con
+       cobertura menor el panel mostraría dos o tres tarjetas y daría una idea
+       falsa del mercado: el padrón publica razón social, no bandera. */
+    var porRazon = !conPrecio || (conMarca / conPrecio) < 0.15;
+    var fuente = porRazon ? porGrupo : porMarca;
+    var minimo = porRazon ? 2 : 1;      // un grupo con una sola estación no es grupo
+
+    var lista = Object.keys(fuente)
+      .filter(function (k) { return fuente[k].length >= minimo; })
+      .map(function (k) { return { marca: k, avg: avg(fuente[k]), n: fuente[k].length }; })
+      .sort(function (a, b) { return b.n - a.n || a.avg - b.avg; })
+      .slice(0, COMP_MAX)
+      .sort(function (a, b) { return a.avg - b.avg; });
 
     var refBase = mercado.nacional["MX|" + p];
     var refZona = null;
@@ -3756,18 +3849,21 @@ window.APP_CONFIG = {
     var ref = refZona || refBase;
 
     if (!lista.length) {
-      caja.innerHTML = '<p class="comp__empty">Ninguna de las marcas vigiladas aparece en la selección actual. ' +
-        'El padrón de la CNE publica la razón social, no la marca comercial: llena la columna <code>Marca</code> ' +
-        'en <code>catalogo_estaciones.csv</code> (o ajusta <code>MARCAS_COMPETENCIA</code> en config.js) para activarla.</p>';
-      if (nota) nota.textContent = "Promedio por marca en la selección activa.";
+      caja.innerHTML = '<p class="comp__empty">En esta selección no hay ningún operador con dos o más ' +
+        "estaciones. Amplía el filtro a un municipio o estado completo para ver los grupos de la zona.</p>";
+      if (nota) nota.textContent = "Operadores con presencia múltiple en la selección activa.";
       return;
     }
 
     caja.innerHTML = lista.map(function (d) {
       var dif = ref ? d.avg - ref.avg : null;
       var clase = dif === null ? "" : dif < -0.005 ? " comp__card--bajo" : dif > 0.005 ? " comp__card--alto" : "";
-      return '<div class="comp__card' + clase + '">' +
-        '<p class="comp__marca">' + esc(d.marca) + "</p>" +
+      var nombre = d.marca.length > 38 ? d.marca.slice(0, 36) + "…" : d.marca;
+      return '<div class="comp__card' + clase + '" data-tip data-tip-title="' + esc(d.marca) +
+        '" data-tip-body="' + d.n + (d.n > 1 ? " estaciones" : " estación") + " en la selección · promedio " +
+        money(d.avg) + (dif === null ? "" : " · " + (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) +
+        " contra el promedio de la zona") + '">' +
+        '<p class="comp__marca">' + esc(nombre) + "</p>" +
         '<p class="comp__precio">' + money(d.avg) + "</p>" +
         '<p class="comp__pie">' + d.n.toLocaleString("es-MX") + (d.n > 1 ? " estaciones" : " estación") +
           (dif === null ? "" : " · " + (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) + " vs. zona") +
@@ -3775,8 +3871,13 @@ window.APP_CONFIG = {
     }).join("");
 
     if (nota) {
-      nota.textContent = "Promedio de " + PRODUCTS[p].label + " por marca · " +
-        (refZona ? "comparado contra el promedio de la zona filtrada" : "comparado contra el promedio nacional del periodo") +
+      var universo = Object.keys(fuente).filter(function (k) { return fuente[k].length >= minimo; }).length;
+      nota.textContent = (porRazon
+          ? "Grupos operadores con dos o más estaciones · " + lista.length + " de " + universo +
+            " en la selección, ordenados por precio"
+          : "Promedio por marca") +
+        " · " + PRODUCTS[p].label + " · " +
+        (refZona ? "contra el promedio de la zona filtrada" : "contra el promedio nacional del periodo") +
         (ref ? " (" + money(ref.avg) + ")" : "");
     }
   }
@@ -4578,6 +4679,7 @@ window.APP_CONFIG = {
                 signoDinero(delta)) +
       "</div>" +
       bloqueFinanciero(actual, sim.precio, delta) +
+      bloqueRegulatorio(r, sim.precio) +
       (uni.ref && uni.ref.alcance !== "municipio" && uni.ref.alcance !== "radio"
         ? '<p class="sim__nota">Esta estación no tiene competidores identificados en su municipio, así que ' +
           "el ranking se calcula contra " +
@@ -4595,6 +4697,49 @@ window.APP_CONFIG = {
        significa estar por debajo del mercado. */
     function signoDinero(n) {
       return n > 0 ? "pos" : n < 0 ? "neg" : "";
+    }
+
+    /* Capa de referencia regulatoria. Aparece solo si existe el archivo de TAR
+       para la entidad de la estación. Nunca reemplaza el costo del usuario:
+       se muestra aparte, con su propia advertencia. */
+    function bloqueRegulatorio(r, precioSim) {
+      var ref = margenRegulatorio(r, state.product);
+      if (!ref) return "";
+
+      // Distribución de márgenes estimados en la misma entidad, para situarlo.
+      var pares = periodRows().filter(function (x) {
+        return x.estado === r.estado && x[state.product] !== null;
+      }).map(function (x) { return x[state.product] - ref.tar; })
+        .sort(function (a, b) { return a - b; });
+
+      var margenSim = precioSim - ref.tar;
+      var lectura, tono;
+      if (pares.length >= 8) {
+        var p75 = quantile(pares, 0.75), p90 = quantile(pares, 0.90), p25 = quantile(pares, 0.25);
+        if (margenSim >= p90) { lectura = "Entre el 10% de márgenes más altos de " + esc(r.estado); tono = "neg"; }
+        else if (margenSim >= p75) { lectura = "Por encima del 75% de las estaciones de " + esc(r.estado); tono = ""; }
+        else if (margenSim <= p25) { lectura = "Entre el 25% de márgenes más bajos de " + esc(r.estado); tono = "pos"; }
+        else { lectura = "En la banda media de " + esc(r.estado); tono = ""; }
+      } else {
+        lectura = "Referencia de " + esc(r.estado); tono = "";
+      }
+
+      return '<div class="fin fin--reg">' +
+        '<p class="fin__titulo">Indicador regulatorio de referencia</p>' +
+        '<div class="sim__grid">' +
+          tarjeta("Precio TAR de referencia", money(ref.tar),
+                  ref.vigencia ? "vigencia " + esc(ref.vigencia) : "precio de venta de primera mano", "") +
+          tarjeta("Margen bruto estimado", money(margenSim) + " / L",
+                  "precio simulado menos TAR, sin flete ni descuentos", tono) +
+          tarjeta("Posición en su entidad", lectura,
+                  pares.length + " estaciones comparadas", tono) +
+        "</div>" +
+        '<p class="fin__nota"><b>Esto no es su margen.</b> La TAR es el precio de salida en terminal: ' +
+        "no incluye su descuento por volumen, pronto pago ni el flete en autotanque, que juntos suelen " +
+        "mover entre $0.30 y $0.80 por litro. Sirve para una sola cosa: ver cómo luce su estación frente " +
+        "al indicador con que se construyen los comparativos públicos de margen. Para su utilidad real, " +
+        "capture su costo por litro arriba.</p>" +
+      "</div>";
     }
 
     function bloqueFinanciero(precioActual, precioSim, delta) {
