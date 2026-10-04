@@ -2987,12 +2987,23 @@ window.APP_CONFIG = {
       : "Aún no eliges estaciones: usa el botón \u201cMis estaciones\u201d para agregar hasta 5.";
     if (!mias && state.onlyMine) setMine(false);
 
-    var nota = [state.rows.length.toLocaleString("es-MX") + " estaciones", "origen: " + state.origin];
-    if (ps.length) nota.push(ps.length + " periodo" + (ps.length > 1 ? "s" : ""));
-    if (quality.catalogo) nota.push(quality.catalogo.toLocaleString("es-MX") + " con catálogo");
+    /* state.rows acumula un renglón por estación Y por corte. Con tres cortes
+       son ~41,500 renglones de ~13,850 estaciones: llamarles "estaciones" a los
+       renglones es el error que hacía dudar de la cifra. */
+    var permisos = {};
+    state.rows.forEach(function (r) { permisos[permitKey(r.permiso)] = true; });
+    var unicas = Object.keys(permisos).length;
+
+    var nota = [unicas.toLocaleString("es-MX") + " estaciones", "origen: " + state.origin];
+    if (ps.length > 1) {
+      nota.push(ps.length + " cortes · " + state.rows.length.toLocaleString("es-MX") + " registros");
+    } else if (ps.length) {
+      nota.push("1 corte");
+    }
+    if (quality.catalogo) nota.push(quality.catalogo.toLocaleString("es-MX") + " registros con catálogo");
     var conUbic = state.rows.filter(function (r) { return r.estado; }).length;
     var inferidas = state.rows.filter(function (r) { return r.inferido; }).length;
-    nota.push(conUbic.toLocaleString("es-MX") + " con ubicación" + (inferidas ? " (" + inferidas + " inferida" + (inferidas > 1 ? "s" : "") + " del domicilio)" : ""));
+    nota.push(conUbic.toLocaleString("es-MX") + " registros con ubicación" + (inferidas ? " (" + inferidas + " inferida" + (inferidas > 1 ? "s" : "") + " del domicilio)" : ""));
     if (MIAS.activo) {
       nota.push(mias ? mias + " sucursal" + (mias > 1 ? "es" : "") + " propia" + (mias > 1 ? "s" : "")
                      : "sin sucursales propias en el padrón");
@@ -4128,8 +4139,8 @@ window.APP_CONFIG = {
     kpis.innerHTML =
       '<div class="din__kpi"><p class="din__kpi-label">Movilidad del mercado</p>' +
         '<p class="din__kpi-valor">' + d.pct + '%</p>' +
-        '<p class="din__kpi-pie">de las comparaciones registraron cambio en ' + (d.cortes - 1) +
-        ' transición(es)</p></div>' +
+        '<p class="din__kpi-pie">de ' + d.comparables.toLocaleString("es-MX") +
+        ' comparaciones estación-a-estación</p></div>' +
       '<div class="din__kpi din__kpi--alza"><p class="din__kpi-label">Alzas</p>' +
         '<p class="din__kpi-valor">' + d.alzas.toLocaleString("es-MX") + '</p>' +
         '<p class="din__kpi-pie">' + (d.movimientos ? Math.round(d.alzas / d.movimientos * 100) : 0) +
@@ -4140,7 +4151,8 @@ window.APP_CONFIG = {
         '% de los movimientos</p></div>' +
       '<div class="din__kpi"><p class="din__kpi-label">Sin moverse</p>' +
         '<p class="din__kpi-valor">' + quietas.toLocaleString("es-MX") + '</p>' +
-        '<p class="din__kpi-pie">estaciones que sostuvieron precio</p></div>';
+        '<p class="din__kpi-pie">comparaciones sin cambio · ' + d.estaciones.toLocaleString("es-MX") +
+        ' estaciones seguidas en ' + (d.cortes - 1) + ' transición(es)</p></div>';
 
     cuerpo.innerHTML = d.tabla.length ? d.tabla.map(function (o) {
       var conducta = o.tasa >= 0.4 ? ["activo", "Mueve seguido"]
