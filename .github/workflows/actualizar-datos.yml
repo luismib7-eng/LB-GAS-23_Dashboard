@@ -110,6 +110,11 @@ jobs:
       - name: Revisar que esten los archivos que el pipeline necesita
         if: steps.validacion.outputs.omitir == '0'
         run: |
+          echo "Commit que se esta ejecutando: ${{ github.sha }}"
+          echo "Evento: ${{ github.event_name }}  ·  Rama: ${{ github.ref_name }}"
+          echo "Si este commit NO es el ultimo de main, estas re-ejecutando una corrida vieja:"
+          echo "usa 'Run workflow', no 'Re-run jobs'."
+          echo ""
           echo "Contenido de la raiz del repositorio:"
           ls -la
           falta=0
@@ -145,6 +150,7 @@ jobs:
                   --salida fallback.csv \
                   --acumular --conservar 7 \
                   --historico historico.csv --historico-conservar 120 \
+                  --movimientos movimientos.csv --movimientos-conservar 400 \
                   --reporte reporte_mercado.csv
 
       - name: Generar el histórico en Excel
@@ -172,13 +178,13 @@ jobs:
         run: |
           # No se borra diagnostico.txt aqui: el paso del resumen lo publica.
           rm -f precios_del_dia.xml
-          if git diff --quiet -- fallback.csv historico.csv reporte_mercado.csv historico.xlsx clientes/; then
+          if git diff --quiet -- fallback.csv historico.csv movimientos.csv reporte_mercado.csv historico.xlsx clientes/; then
             echo "Sin cambios: la fecha ya estaba cargada."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add fallback.csv historico.csv reporte_mercado.csv historico.xlsx clientes/
+          git add fallback.csv historico.csv movimientos.csv reporte_mercado.csv historico.xlsx clientes/
           git commit -m "Precios $(date -u +%Y-%m-%d)"
           git push
 
@@ -206,6 +212,7 @@ jobs:
             echo "| HTTP | ${{ steps.descarga.outputs.codigo }} |"
             echo "| Bytes recibidos | ${{ steps.descarga.outputs.bytes }} |"
             echo "| URL usada | \`${{ steps.descarga.outputs.url }}\` |"
+            echo "| Commit ejecutado | \`${{ github.sha }}\` |"
             echo ""
             echo "**Que traia el archivo**"
             echo ""
