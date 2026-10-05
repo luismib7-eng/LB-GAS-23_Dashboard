@@ -129,8 +129,18 @@ def construir_config(args, permisos, logo):
   MARCAS_COMPETENCIA: ["BP", "TOTALENERGIES", "REPSOL", "SHELL", "CHEVRON",
                        "EXXONMOBIL", "GULF", "G500", "OXXO GAS", "ARCO NORTE"],
 
+  /* Topes de la Estrategia Nacional (SENER y Presidencia, ago 2026 - feb 2027).
+     Premium no está en el pacto. */
+  TOPE_ESTRATEGIA: {
+    label: "Estrategia Nacional SENER",
+    vigencia: "20 ago 2026 – feb 2027",
+    regular: %(tope_r)s,
+    diesel: %(tope_d)s,
+    premium: null
+  },
+
   BENCHMARK: {
-    label: "Promedio nacional Profeco",
+    label: "Promedio nacional",
     regular: %(bench_r)s,
     premium: %(bench_p)s,
     diesel: %(bench_d)s
@@ -153,6 +163,8 @@ def construir_config(args, permisos, logo):
         "bench_r": args.benchmark_regular,
         "bench_p": args.benchmark_premium,
         "bench_d": args.benchmark_diesel,
+        "tope_r": args.tope_regular,
+        "tope_d": args.tope_diesel,
     }
     return js.rstrip().rstrip(";")
 
@@ -176,6 +188,10 @@ def main():
                     help="Archivo que descarga el botón Histórico (vacío: usa el CSV)")
     ap.add_argument("--logo", default="", help="Archivo de logotipo a copiar en la instancia")
     ap.add_argument("--refresco", type=int, default=10, help="Minutos entre actualizaciones automáticas")
+    ap.add_argument("--tope-regular", default="24.00", dest="tope_regular",
+                    help="Tope de la Estrategia Nacional para Regular")
+    ap.add_argument("--tope-diesel", default="27.00", dest="tope_diesel",
+                    help="Tope de la Estrategia Nacional para Diésel")
     ap.add_argument("--benchmark-regular", default="23.68")
     ap.add_argument("--benchmark-premium", default="28.50")
     ap.add_argument("--benchmark-diesel", default="27.00")

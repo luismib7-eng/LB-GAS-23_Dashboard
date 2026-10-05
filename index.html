@@ -1483,6 +1483,10 @@ html[data-theme="dark"] .badge--alto{background:rgba(216,166,74,.16);color:#D8A6
 .din__titulo span{font-size:11px;font-weight:400;color:var(--muted);font-family:var(--font-mono)}
 html[data-theme="dark"] .din__titulo{color:#8FB6E8}
 .din__nota{font-size:12px;color:var(--muted);line-height:1.5;margin-top:8px;max-width:88ch}
+
+/* Cumplimiento de la Estrategia Nacional */
+.badge--tope{background:var(--premium);color:#fff;font-weight:700}
+.fin--tope{border-top-color:var(--premium)}
 </style>
 </head>
 <body>
@@ -1742,6 +1746,7 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
             <button class="btn btn--ghost" type="button" data-step="0.10">+0.10</button>
             <button class="btn btn--ghost" type="button" data-step="0.20">+0.20</button>
             <button class="btn btn--ghost" type="button" id="simReset">Precio actual</button>
+          <button class="btn btn--ghost" type="button" id="simClear">Limpiar todo</button>
           </div>
         </div>
       </div>
@@ -2039,6 +2044,19 @@ window.APP_CONFIG = {
      hoy el tablero agrupa por operador. */
   MARCAS_COMPETENCIA: ["BP", "TOTALENERGIES", "REPSOL", "SHELL", "CHEVRON",
                        "EXXONMOBIL", "GULF", "G500", "OXXO GAS", "ARCO NORTE"],
+
+  /* Estrategia Nacional para Estabilizar el Precio de la Gasolina Regular y el
+     Diésel (SENER y Presidencia, renovada el 20 de agosto de 2026 por seis meses).
+     Son TOPES de precio al público, no promedios: Premium no está incluida en el
+     pacto. En la franja fronteriza el precio es menor por la tasa de IVA del 8%,
+     así que el tope se aplica como referencia, no como incumplimiento. */
+  TOPE_ESTRATEGIA: {
+    label: "Estrategia Nacional SENER",
+    vigencia: "20 ago 2026 – feb 2027",
+    regular: 24.00,
+    diesel: 27.00,
+    premium: null
+  },
 
   BENCHMARK: {
     label: "Promedio nacional Profeco",
@@ -3376,6 +3394,14 @@ window.APP_CONFIG = {
         var diff = mean - b;
         parts.push((diff >= 0 ? "+" : "") + diff.toFixed(2) + " vs. " + ref.etiqueta + " (" + money(b) + ")");
       }
+      var tope = topeEstrategia(p);
+      if (tope) {
+        var fuera = vals.filter(function (x) { return x >= tope.valor; }).length;
+        parts.push(fuera
+          ? fuera.toLocaleString("es-MX") + " de " + vals.length.toLocaleString("es-MX") +
+            " en o por encima del tope " + tope.label + " (" + money(tope.valor) + ")"
+          : "todas por debajo del tope " + tope.label + " (" + money(tope.valor) + ")");
+      }
       benchEl.textContent = parts.join(" · ");
     });
   }
@@ -3761,9 +3787,18 @@ window.APP_CONFIG = {
   /* Insignia de posición en la banda local. El tooltip aclara que es una
      clasificación por percentil de precio y no el margen de Profeco. */
   function insignia(r, prod) {
+    var fuera = excedeTope(r[prod], prod);
+    var marca = "";
+    if (fuera) {
+      marca = ' <span class="badge badge--tope" data-tip data-tip-title="Fuera del tope de la ' +
+        esc(fuera.label) + '" data-tip-body="El precio al público iguala o supera ' + money(fuera.valor) +
+        ', el límite acordado entre el Gobierno Federal y el sector (' + esc(fuera.vigencia) +
+        '). En la franja fronteriza el precio es menor por la tasa de IVA del 8%, así que ahí el ' +
+        'tope opera como referencia.">Fuera del tope</span>';
+    }
     var c = clasificar(r, prod);
-    if (!c || c.clase === "banda") return "";
-    return ' <span class="badge badge--' + c.clase + '" data-tip ' +
+    if (!c || c.clase === "banda") return marca;
+    return marca + ' <span class="badge badge--' + c.clase + '" data-tip ' +
       'data-tip-title="' + esc(c.texto) + '" data-tip-body="' + esc(c.detalle) +
       ' Clasificación por percentil de precio en el mercado local; no es el cálculo de margen de Profeco.">' +
       esc(c.texto) + "</span>";
@@ -3849,6 +3884,21 @@ window.APP_CONFIG = {
   /* Referencia nacional vigente: se toma del último corte del histórico en
      lugar de un valor capturado a mano, que se desactualiza sin aviso.
      CFG.BENCHMARK queda solo como respaldo si no hay histórico cargado. */
+  /* Tope de la Estrategia Nacional para el producto activo. Devuelve null
+     cuando el producto no está en el pacto (Premium) o no hay configuración. */
+  function topeEstrategia(prod) {
+    var t = CFG.TOPE_ESTRATEGIA;
+    if (!t) return null;
+    var v = t[prod];
+    return (v === null || v === undefined || !isFinite(v)) ? null
+      : { valor: v, label: t.label || "Estrategia Nacional", vigencia: t.vigencia || "" };
+  }
+
+  function excedeTope(precio, prod) {
+    var t = topeEstrategia(prod);
+    return t && precio !== null && precio >= t.valor ? t : null;
+  }
+
   function benchVigente(prod) {
     // El histórico guarda el producto en minúsculas y sin acento.
     var col = prod === "diesel" ? "diesel" : prod;
@@ -5032,6 +5082,7 @@ window.APP_CONFIG = {
                               " por litro vendido frente al precio de hoy",
                 signoDinero(delta)) +
       "</div>" +
+      avisoTope(sim.precio) +
       bloqueFinanciero(actual, sim.precio, delta) +
       bloqueRegulatorio(r, sim.precio) +
       (uni.ref && uni.ref.alcance !== "municipio" && uni.ref.alcance !== "radio"
@@ -5049,6 +5100,21 @@ window.APP_CONFIG = {
     /* En el bloque financiero el color sigue el dinero, no el precio: ganar es
        verde y perder es rojo. En las tarjetas de posición, en cambio, verde
        significa estar por debajo del mercado. */
+    /* Advertencia regulatoria: el pacto no es ley, pero quien lo rebasa queda
+       expuesto en los comparativos públicos de Profeco y pierde el argumento
+       frente a la autoridad. Conviene que el tablero lo diga antes. */
+    function avisoTope(precioSim) {
+      var t = excedeTope(precioSim, state.product);
+      if (!t) return "";
+      return '<div class="fin fin--tope"><p class="fin__titulo">Fuera del tope acordado</p>' +
+        '<p class="fin__alerta">A ' + money(precioSim) + ' el precio iguala o supera el límite de la <b>' +
+        esc(t.label) + '</b> (' + money(t.valor) + ', vigente ' + esc(t.vigencia) + '), acordado entre ' +
+        'el Gobierno Federal y las principales marcas del sector. No es una obligación legal, pero las ' +
+        'estaciones por encima del tope son las que aparecen señaladas en los comparativos públicos de ' +
+        'precios.</p><p class="fin__nota">En la franja fronteriza el precio de referencia es menor por ' +
+        'la tasa de IVA del 8%, de modo que ahí el tope opera como referencia y no como incumplimiento.</p></div>';
+    }
+
     function signoDinero(n) {
       return n > 0 ? "pos" : n < 0 ? "neg" : "";
     }
@@ -5461,6 +5527,23 @@ window.APP_CONFIG = {
     });
 
     $("simReset").addEventListener("click", function () { sim.precio = null; calcularSimulacion(); });
+
+    var btnClear = $("simClear");
+    if (btnClear) {
+      btnClear.addEventListener("click", function () {
+        sim.permiso = ""; sim.precio = null; sim.busqueda = "";
+        sim.volumen = null; sim.costo = null; sim.extra = null;
+        ["simSearch", "simPrice", "simVolumen", "simCosto", "simExtra"].forEach(function (id) {
+          var campo = $(id); if (campo) campo.value = "";
+        });
+        var sel = $("simStation"); if (sel) sel.value = "";
+        try { localStorage.removeItem(SIM_FIN_KEY); } catch (e) {}
+        renderSimulador();
+        // renderSimulador repuebla el precio con el de la estación: se vacía al final.
+        var campoPrecio = $("simPrice");
+        if (campoPrecio) campoPrecio.value = "";
+      });
+    }
 
     $("simResult").addEventListener("click", function (e) {
       var b = e.target.closest("[data-litros]");
