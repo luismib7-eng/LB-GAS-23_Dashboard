@@ -1,12 +1,12 @@
-# ENERSO · Inteligencia de Combustibles
+# Cliente de ejemplo · León
 
 Instancia generada con `preparar_cliente.py`.
 
-- Slug: `enerso`
-- Estaciones declaradas: ninguna
-- Radio de competencia: 5 km
-- Tope de estaciones propias: 10
-- Alcance de datos: Jalisco, Guanajuato, Michoacán, Aguascalientes, Colima, Zacatecas
+- Slug: `ejemplo-leon`
+- Estaciones declaradas: PL/18/EXP/ES/2025
+- Radio de competencia: 5.0 km
+- Tope de estaciones propias: 1
+- Alcance de datos: Guanajuato
 - Generada: 2026-10-07
 
 Para actualizar los datos, vuelve a correr el generador sobre la carpeta

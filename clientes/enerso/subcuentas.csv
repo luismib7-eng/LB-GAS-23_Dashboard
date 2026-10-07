@@ -1,0 +1,4 @@
+slug,nombre,permiso_cre,radio_km,radio_datos_km,zoom,activo
+ejemplo-morelia,Cliente de ejemplo · Morelia,CNE/PL/15/EXP/ES/2025,5,15,13,si
+ejemplo-tepatitlan,Cliente de ejemplo · Tepatitlán,CNE/PL/156/EXP/ES/2025,5,15,13,si
+ejemplo-leon,Cliente de ejemplo · León,CNE/PL/18/EXP/ES/2025,5,15,13,si

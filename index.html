@@ -1091,6 +1091,27 @@ main.wrap{padding-block:22px 40px}
 .sim__controls .input{min-width:260px}
 .input--num{min-width:140px !important;font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 .sim__steps{display:flex;gap:6px;flex-wrap:wrap}
+/* ---- Competidores directos en el radio ---- */
+.vec__body{padding:0 20px 20px}
+.vec__controls{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px}
+.vec__controls .input{min-width:260px}
+.vec__steps .btn.is-on{background:var(--brand-tint);border-color:var(--brand);color:var(--text)}
+.sim__steps .btn.is-on{background:var(--brand-tint);border-color:var(--brand);color:var(--text)}
+.vec__resumen{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.vec__dato{border:1px solid var(--line);border-radius:var(--radius-sm);padding:12px 14px;background:var(--surface-2)}
+.vec__dato b{display:block;font-family:var(--font-mono);font-size:19px;font-variant-numeric:tabular-nums;line-height:1.25}
+.vec__dato span{display:block;font-size:11px;color:var(--muted);letter-spacing:.03em;text-transform:uppercase;margin-top:4px}
+.vec__dato--ref{background:var(--brand-tint);border-color:var(--brand)}
+.vec__lectura{margin:0 0 16px;font-size:13.5px;line-height:1.6;color:var(--text)}
+.vec__nota{margin:12px 0 0;font-size:12px;color:var(--muted);line-height:1.6}
+.vec__empty{margin:0;font-size:13.5px;color:var(--muted);line-height:1.6}
+.vec__dist{font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.vec__delta--bajo{color:var(--regular);font-weight:600}
+.vec__delta--alto{color:var(--premium);font-weight:600}
+.vec__delta--igual{color:var(--muted)}
+.table tbody tr.is-ref{background:var(--brand-tint)}
+.table tbody tr.is-ref td:first-child{box-shadow:inset 3px 0 0 var(--brand)}
+@media (max-width:760px){.vec__controls .input{min-width:100%}.vec__body{padding:0 14px 16px}}
 .sim__steps .btn{padding:8px 12px;font-family:var(--font-mono);font-size:12.5px}
 
 .sim__verdict{font-size:15px;line-height:1.5;margin-bottom:14px}
@@ -1690,6 +1711,47 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
     </div>
     <div class="comp" id="compCards"></div>
   </section>
+
+  <!-- ══════════════ COMPETIDORES DIRECTOS EN EL RADIO ══════════════ -->
+  <details class="panel vec" id="vecPanel">
+    <summary class="sim__summary">
+      <span>
+        <span class="panel__title">Competidores directos</span>
+        <span class="panel__sub" id="vecSub">Quién tienes dentro del radio, con nombre, distancia y precio.</span>
+      </span>
+      <span class="sim__chevron" aria-hidden="true">▾</span>
+    </summary>
+
+    <div class="vec__body">
+      <div class="vec__controls">
+        <label class="field">
+          <span class="field__label">Buscar estación</span>
+          <input id="vecSearch" class="input" type="search"
+                 placeholder="Permiso CRE, razón social o municipio"
+                 aria-label="Buscar la estación de referencia">
+        </label>
+
+        <label class="field">
+          <span class="field__label">Estación de referencia</span>
+          <select id="vecStation" class="input"></select>
+          <span class="field__hint" id="vecHint"></span>
+        </label>
+
+        <div class="field">
+          <span class="field__label">Ordenar y exportar</span>
+          <div class="sim__steps">
+            <button class="btn btn--ghost" type="button" data-vec-orden="distancia">Distancia</button>
+            <button class="btn btn--ghost" type="button" data-vec-orden="precio">Precio</button>
+            <button class="btn btn--ghost" type="button" id="vecCsv">Descargar CSV</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="vecResumen"></div>
+      <div class="tablebox" id="vecBox" hidden><table class="table" id="vecTabla"></table></div>
+      <p class="vec__nota" id="vecNota"></p>
+    </div>
+  </details>
 
   <!-- ══════════════ SIMULADOR TÁCTICO DE PRECIOS ══════════════ -->
   <details class="panel sim" id="simPanel">
@@ -3925,6 +3987,7 @@ window.APP_CONFIG = {
     renderHist(rows);
     renderTable(rows);
     renderCompetencia(rows);
+    renderVecindario();
     renderMisEstaciones();
     renderBriefing();
     if (mapaListo) {
@@ -4943,9 +5006,255 @@ window.APP_CONFIG = {
      se listan primero las propias. */
   var SIM_MAX = 200;
 
-  function candidatasSimulador() {
+  /* ---------------------------------------------------------
+     COMPETIDORES DIRECTOS EN EL RADIO
+
+     El motor de vecindario ya existe (vecinos / distanciaKm / rejilla); lo
+     que faltaba era mostrarlo con nombre y apellido. Aquí se nombra a cada
+     competidor dentro de RADIO_KM de la estación de referencia, con su
+     distancia real, su precio y la diferencia contra la referencia.
+     --------------------------------------------------------- */
+
+  var vec = { permiso: "", busqueda: "", orden: "distancia" };
+
+  function filaVec() {
+    var p = vec.permiso;
+    if (!p) return null;
+    var enc = periodRows().filter(function (r) { return r.permiso === p; });
+    return enc[0] || null;
+  }
+
+  /* Devuelve la referencia y su vecindario ya medido y ordenado. */
+  function vecindario() {
+    var ref = filaVec();
+    if (!ref) return null;
+    var prod = state.product;
+    if (ref[prod] === null) return { ref: ref, prod: prod, sinPrecio: true, lista: [] };
+    if (ref.lat === null || ref.lon === null) return { ref: ref, prod: prod, sinCoords: true, lista: [] };
+
+    var crudo = vecinos(ref, prod) || [];
+    var lista = [];
+    crudo.forEach(function (x) {
+      if (x.permiso === ref.permiso) return;
+      lista.push({
+        row: x,
+        km: distanciaKm(ref, x),
+        precio: x[prod],
+        delta: x[prod] - ref[prod]
+      });
+    });
+
+    if (vec.orden === "precio") lista.sort(function (a, b) { return a.precio - b.precio || a.km - b.km; });
+    else lista.sort(function (a, b) { return a.km - b.km || a.precio - b.precio; });
+
+    return { ref: ref, prod: prod, lista: lista };
+  }
+
+  function renderVecindario() {
+    var selec = $("vecStation"), resumen = $("vecResumen"), caja = $("vecBox"),
+        tabla = $("vecTabla"), pista = $("vecHint"), nota = $("vecNota"), sub = $("vecSub");
+    if (!selec || !resumen || !tabla) return;
+
+    var radio = Number(CFG.RADIO_KM || 0);
+    if (sub) sub.textContent = radio
+      ? "Quién tienes dentro de " + radio + " km, con nombre, distancia y precio."
+      : "Configura RADIO_KM para activar este panel.";
+
+    var cand = candidatasDe(vec.busqueda);
+    var previo = vec.permiso;
+    selec.innerHTML = "";
+
+    if (!cand.rows.length) {
+      selec.appendChild(new Option("Sin coincidencias", ""));
+      selec.disabled = true;
+      resumen.innerHTML = '<p class="vec__empty">La búsqueda no encontró estaciones. Prueba con el permiso CRE ' +
+        '(por ejemplo <code>PL/9998</code>), la razón social o el municipio.</p>';
+      if (caja) caja.hidden = true;
+      if (pista) pista.textContent = "";
+      if (nota) nota.textContent = "";
+      return;
+    }
+
+    selec.disabled = false;
+    cand.rows.forEach(function (r) {
+      var donde = r.municipio ? " · " + r.municipio : r.estado ? " · " + r.estado : " · sin ubicación";
+      selec.appendChild(new Option((r.estacion || r.permiso) + donde + (r._own ? " ★" : ""), r.permiso));
+    });
+
+    if (pista) {
+      pista.textContent = cand.filtrado
+        ? cand.total.toLocaleString("es-MX") + " coincidencia(s)"
+        : cand.propias
+          ? cand.total + " estación(es) propia(s) · escribe arriba para buscar cualquier otra"
+          : "Escribe arriba para buscar una estación en particular";
+    }
+
+    if (previo && cand.rows.some(function (r) { return r.permiso === previo; })) selec.value = previo;
+    else { vec.permiso = cand.rows[0].permiso; selec.value = vec.permiso; }
+
+    document.querySelectorAll("[data-vec-orden]").forEach(function (b) {
+      b.classList.toggle("is-on", b.getAttribute("data-vec-orden") === vec.orden);
+    });
+
+    pintarVecindario();
+  }
+
+  function pintarVecindario() {
+    var resumen = $("vecResumen"), caja = $("vecBox"), tabla = $("vecTabla"), nota = $("vecNota");
+    if (!resumen || !tabla) return;
+
+    var v = vecindario();
+    var radio = Number(CFG.RADIO_KM || 0);
+
+    if (!v) { resumen.innerHTML = ""; if (caja) caja.hidden = true; return; }
+
+    var etiqueta = PRODUCTS[v.prod].label;
+
+    if (v.sinPrecio) {
+      resumen.innerHTML = '<p class="vec__empty"><b>' + esc(v.ref.estacion || v.ref.permiso) +
+        "</b> no reporta " + esc(etiqueta) + " en este corte, así que no hay contra qué compararla. " +
+        "Cambia de producto arriba o elige otra estación.</p>";
+      if (caja) caja.hidden = true;
+      if (nota) nota.textContent = "";
+      return;
+    }
+
+    if (v.sinCoords) {
+      resumen.innerHTML = '<p class="vec__empty"><b>' + esc(v.ref.estacion || v.ref.permiso) +
+        "</b> no tiene coordenadas válidas en el catálogo, y sin coordenadas no se puede medir " +
+        "un radio. Captura Lat y Lon en <code>catalogo_estaciones.csv</code> para activarla.</p>";
+      if (caja) caja.hidden = true;
+      if (nota) nota.textContent = "";
+      return;
+    }
+
+    var lista = v.lista, n = lista.length;
+
+    if (!n) {
+      resumen.innerHTML = '<p class="vec__empty"><b>' + esc(v.ref.estacion || v.ref.permiso) +
+        "</b> no tiene ninguna otra estación que reporte " + esc(etiqueta) + " dentro de " + radio +
+        " km. Opera sin competencia directa medible en ese radio: su referencia de precio es el " +
+        "municipio, no el vecindario.</p>";
+      if (caja) caja.hidden = true;
+      if (nota) nota.textContent = "";
+      return;
+    }
+
+    var precios = lista.map(function (x) { return x.precio; }).slice().sort(function (a, b) { return a - b; });
+    var masBaratos = lista.filter(function (x) { return x.delta < -0.005; }).length;
+    var masCaros = lista.filter(function (x) { return x.delta > 0.005; }).length;
+    var iguales = n - masBaratos - masCaros;
+    var prom = precios.reduce(function (a, b) { return a + b; }, 0) / n;
+    var lugar = masBaratos + 1;
+    var masCercano = lista.slice().sort(function (a, b) { return a.km - b.km; })[0];
+    var masBarato = lista.slice().sort(function (a, b) { return a.precio - b.precio; })[0];
+
+    resumen.innerHTML =
+      '<div class="vec__resumen">' +
+        '<div class="vec__dato vec__dato--ref"><b>' + money(v.ref[v.prod]) + "</b><span>Tu precio</span></div>" +
+        '<div class="vec__dato"><b>' + n + "</b><span>Competidores en " + radio + " km</span></div>" +
+        '<div class="vec__dato"><b>' + lugar + " de " + (n + 1) + "</b><span>Lugar por precio</span></div>" +
+        '<div class="vec__dato"><b>' + money(prom) + "</b><span>Promedio del radio</span></div>" +
+        '<div class="vec__dato"><b>' + (v.ref[v.prod] - prom >= 0 ? "+" : "") +
+          money(v.ref[v.prod] - prom) + "</b><span>Tu diferencia</span></div>" +
+      "</div>" +
+      '<p class="vec__lectura">' +
+        "Dentro de " + radio + " km de <b>" + esc(v.ref.estacion || v.ref.permiso) + "</b> hay <b>" + n +
+        "</b> competidor" + (n === 1 ? "" : "es") + " que reporta" + (n === 1 ? "" : "n") + " " + esc(etiqueta) + ". " +
+        (masBaratos
+          ? "<b>" + masBaratos + "</b> vende" + (masBaratos === 1 ? "" : "n") + " más barato que tú" +
+            (masCaros ? ", <b>" + masCaros + "</b> más caro" : "")
+          : "Ninguno vende más barato que tú" +
+            (masCaros ? "; <b>" + masCaros + "</b> vende" + (masCaros === 1 ? "" : "n") + " más caro" : "")) +
+        (iguales ? " y <b>" + iguales + "</b> al mismo precio" : "") + ". " +
+        "El más cercano es <b>" + esc(masCercano.row.estacion || masCercano.row.permiso) + "</b> a " +
+        masCercano.km.toFixed(2) + " km (" + money(masCercano.precio) + "). " +
+        (masBarato.precio < v.ref[v.prod]
+          ? "El más agresivo en precio es <b>" + esc(masBarato.row.estacion || masBarato.row.permiso) +
+            "</b> con " + money(masBarato.precio) + ", " + money(Math.abs(masBarato.delta)) + " por debajo de ti."
+          : "Ninguno te gana en precio: el más bajo del radio es " + money(masBarato.precio) + ".") +
+      "</p>";
+
+    var filas = [
+      '<tr class="is-ref"><td><div class="cell-station">' + esc(v.ref.estacion || v.ref.permiso) +
+        '<span class="badge badge--own">Referencia</span>' + insignia(v.ref, v.prod) + "</div>" +
+        '<div class="cell-addr">' + esc([v.ref.municipio, v.ref.estado].filter(Boolean).join(", ") || "—") + "</div></td>" +
+        '<td><span class="cell-permit">' + (esc(v.ref.permiso) || "—") + "</span></td>" +
+        '<td class="is-num vec__dist">—</td>' +
+        '<td class="is-num">' + money(v.ref[v.prod]) + "</td>" +
+        '<td class="is-num vec__delta--igual">—</td></tr>'
+    ];
+
+    lista.forEach(function (x) {
+      /* El color sigue a TU posición, no al precio del otro: si el competidor
+         está más caro que tú, la ventaja es tuya (verde); si está más barato,
+         te está ganando (rojo). */
+      var cls = x.delta > 0.005 ? "vec__delta--bajo" : x.delta < -0.005 ? "vec__delta--alto" : "vec__delta--igual";
+      var signo = x.delta > 0.005 ? "+" : x.delta < -0.005 ? "−" : "";
+      filas.push(
+        "<tr><td><div class=\"cell-station\">" + esc(x.row.estacion || x.row.permiso) +
+          (x.row._own ? '<span class="badge badge--own">Sucursal propia</span>' : "") +
+          insignia(x.row, v.prod) + "</div>" +
+          '<div class="cell-addr">' + esc([x.row.municipio, x.row.estado].filter(Boolean).join(", ") || "—") + "</div></td>" +
+        '<td><span class="cell-permit">' + (esc(x.row.permiso) || "—") + "</span></td>" +
+        '<td class="is-num vec__dist">' + x.km.toFixed(2) + " km</td>" +
+        '<td class="is-num">' + money(x.precio) + "</td>" +
+        '<td class="is-num ' + cls + '">' + signo + money(Math.abs(x.delta)) + "</td></tr>"
+      );
+    });
+
+    tabla.innerHTML =
+      "<thead><tr>" +
+        "<th>Estación</th><th>Permiso CRE</th>" +
+        '<th class="is-num">Distancia</th>' +
+        '<th class="is-num">' + esc(etiqueta) + "</th>" +
+        '<th class="is-num">Vs. tu precio</th>' +
+      "</tr></thead><tbody>" + filas.join("") + "</tbody>";
+
+    if (caja) caja.hidden = false;
+    if (nota) nota.textContent =
+      "Verde: el competidor está más caro que tú, la ventaja es tuya. Rojo: está más barato y te gana el tráfico. " +
+      "Distancia en línea recta (Haversine) desde las coordenadas del catálogo de la CNE, no por carretera. " +
+      "Solo aparecen las estaciones que reportaron " + etiqueta + " en el corte " +
+      (state.period || "vigente") + "; una estación sin reporte ese día no se lista aunque esté enfrente.";
+  }
+
+  function descargarVecindario() {
+    var v = vecindario();
+    if (!v || !v.lista || !v.lista.length) return;
+    var radio = Number(CFG.RADIO_KM || 0);
+    var etiqueta = PRODUCTS[v.prod].label;
+    var lineas = [[
+      "Referencia", "Permiso referencia", "Producto", "Radio km", "Corte",
+      "Competidor", "Permiso CRE", "Municipio", "Estado",
+      "Distancia km", "Precio", "Diferencia vs referencia", "Posicion"
+    ].map(csvCampo).join(",")];
+
+    v.lista.forEach(function (x) {
+      lineas.push([
+        v.ref.estacion || v.ref.permiso, v.ref.permiso, etiqueta, radio, state.period || "",
+        x.row.estacion || x.row.permiso, x.row.permiso, x.row.municipio || "", x.row.estado || "",
+        x.km.toFixed(3), x.precio.toFixed(2), x.delta.toFixed(2),
+        x.delta < -0.005 ? "Mas barato que la referencia"
+          : x.delta > 0.005 ? "Mas caro que la referencia" : "Mismo precio"
+      ].map(csvCampo).join(","));
+    });
+
+    var nombre = "competidores_" + slug(v.ref.estacion || v.ref.permiso).slice(0, 40) +
+                 "_" + v.prod + "_" + (state.period || "corte") + ".csv";
+    var blob = new Blob(["﻿" + lineas.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+
+  function candidatasSimulador() { return candidatasDe(sim.busqueda); }
+
+  function candidatasDe(busqueda) {
     var base = periodRows();
-    var q = slug(sim.busqueda || "");
+    var q = slug(busqueda || "");
     var propias = base.filter(function (r) { return r._own; });
 
     if (q) {
@@ -5497,6 +5806,34 @@ window.APP_CONFIG = {
     $("simStation").addEventListener("change", function () {
       sim.permiso = this.value; sim.precio = null; calcularSimulacion();
     });
+
+    /* ---- Competidores directos ---- */
+    if ($("vecStation")) {
+      $("vecStation").addEventListener("change", function () {
+        vec.permiso = this.value; pintarVecindario();
+      });
+
+      var tVec = null;
+      $("vecSearch").addEventListener("input", function () {
+        var v = this.value;
+        clearTimeout(tVec);
+        tVec = setTimeout(function () {
+          vec.busqueda = v; vec.permiso = ""; renderVecindario();
+        }, CFG.SEARCH_DEBOUNCE_MS === undefined ? 180 : CFG.SEARCH_DEBOUNCE_MS);
+      });
+
+      document.querySelectorAll("[data-vec-orden]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          vec.orden = this.getAttribute("data-vec-orden");
+          document.querySelectorAll("[data-vec-orden]").forEach(function (o) {
+            o.classList.toggle("is-on", o.getAttribute("data-vec-orden") === vec.orden);
+          });
+          pintarVecindario();
+        });
+      });
+
+      $("vecCsv").addEventListener("click", descargarVecindario);
+    }
 
     var tSim = null;
     $("simSearch").addEventListener("input", function () {

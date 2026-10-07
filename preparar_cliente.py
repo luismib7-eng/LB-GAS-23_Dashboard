@@ -28,6 +28,7 @@ este script solo recorta y reetiqueta, así que correrlo cuesta segundos.
 
 import argparse
 import csv
+import datetime
 import io
 import os
 import re
@@ -60,7 +61,8 @@ def filtrar_csv(origen, destino, columna, valor):
     if not filas or columna not in filas[0]:
         shutil.copy(origen, destino)
         return len(filas), len(filas)
-    conservadas = [f for f in filas if (f.get(columna) or "").strip().lower() == valor.lower()]
+    quiere = set(v.strip().lower() for v in (valor if isinstance(valor, (list, tuple)) else [valor]) if v.strip())
+    conservadas = [f for f in filas if (f.get(columna) or "").strip().lower() in quiere]
     with io.open(destino, "w", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(filas[0].keys()), lineterminator="\n")
         w.writeheader()
@@ -68,16 +70,17 @@ def filtrar_csv(origen, destino, columna, valor):
     return len(filas), len(conservadas)
 
 
-def filtrar_historico(origen, destino, estado):
-    """El histórico guarda ámbitos: se conservan el nacional y el del estado."""
+def filtrar_historico(origen, destino, estados):
+    """El histórico guarda ámbitos: se conservan el nacional y el de cada estado."""
     with io.open(origen, encoding="utf-8-sig", newline="") as fh:
         filas = list(csv.DictReader(fh))
     if not filas:
         shutil.copy(origen, destino)
         return 0, 0
+    quiere = set(v.strip().lower() for v in (estados if isinstance(estados, (list, tuple)) else [estados]) if v.strip())
     conservadas = [f for f in filas
                    if (f.get("Ambito") == "nacional")
-                   or ((f.get("Ambito") == "estado") and (f.get("Clave", "").lower() == estado.lower()))]
+                   or ((f.get("Ambito") == "estado") and (f.get("Clave", "").lower() in quiere))]
     with io.open(destino, "w", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(filas[0].keys()), lineterminator="\n")
         w.writeheader()
@@ -178,6 +181,9 @@ def main():
     ap.add_argument("--subtitulo", default="Monitor de precios de combustibles")
     ap.add_argument("--permisos", default="", help="Permisos CRE del cliente, separados por coma")
     ap.add_argument("--estado", default="", help="Recorta los datos a este estado (recomendado)")
+    ap.add_argument("--estados", default="",
+                    help="Varios estados separados por coma, p. ej. "
+                         "\"Jalisco,Guanajuato,Michoacan\". Tiene prioridad sobre --estado.")
     ap.add_argument("--radio", default="5", help="Radio del mercado local en kilómetros")
     ap.add_argument("--max-estaciones", type=int, default=5, dest="max_estaciones",
                     help="Tope de estaciones propias: 1 Plan Estación, 5 Plan Red, 15 Plan Grupo")
@@ -235,7 +241,11 @@ def main():
         logo = os.path.basename(origen_logo)
         shutil.copy(origen_logo, os.path.join(args.salida, logo))
 
-    # 3. Datos, recortados al estado si se indicó
+    # 3. Datos, recortados a los estados indicados
+    #    --estados (varios) tiene prioridad sobre --estado (uno).
+    estados = [e.strip() for e in args.estados.split(",") if e.strip()] if args.estados \
+        else ([args.estado] if args.estado else [])
+    alcance = ", ".join(estados) if estados else "nacional"
     resumen = []
     for archivo in DATOS:
         origen = os.path.join(args.origen, archivo)
@@ -243,17 +253,17 @@ def main():
         if not os.path.exists(origen):
             resumen.append((archivo, 0, 0, "ausente"))
             continue
-        if not args.estado:
+        if not estados:
             shutil.copy(origen, destino)
             resumen.append((archivo, 0, 0, "completo"))
             continue
         if archivo == "historico.csv":
-            leidas, escritas = filtrar_historico(origen, destino, args.estado)
+            leidas, escritas = filtrar_historico(origen, destino, estados)
         elif archivo == "reporte_mercado.csv":
             shutil.copy(origen, destino)      # son agregados, no revelan estaciones
             leidas = escritas = 0
         else:
-            leidas, escritas = filtrar_csv(origen, destino, "Estado", args.estado)
+            leidas, escritas = filtrar_csv(origen, destino, "Estado", estados)
         resumen.append((archivo, leidas, escritas, "recortado"))
 
     # 4. Configuración: se reemplaza el bloque APP_CONFIG dentro del index.
@@ -280,14 +290,17 @@ def main():
         fh.write("- Estaciones declaradas: %s\n" % (", ".join(permisos) if permisos else "ninguna"))
         fh.write("- Radio de competencia: %s km\n" % args.radio)
         fh.write("- Tope de estaciones propias: %d\n" % args.max_estaciones)
-        fh.write("- Alcance de datos: %s\n\n" % (args.estado if args.estado else "nacional"))
+        fh.write("- Alcance de datos: %s\n" % alcance)
+        fh.write("- Generada: %s\n\n" % datetime.date.today().isoformat())
         fh.write("Para actualizar los datos, vuelve a correr el generador sobre la carpeta\n")
-        fh.write("nacional ya actualizada. `config.js` se reescribe: no lo edites a mano.\n")
+        fh.write("nacional ya actualizada. La configuracion se inyecta dentro de `index.html`\n")
+        fh.write("(el bloque `window.APP_CONFIG`): no la edites a mano, se reescribe en cada\n")
+        fh.write("corrida del generador.\n")
 
     print("Instancia creada en: %s" % args.salida)
     print("Cliente:            %s (%s)" % (args.nombre, args.slug))
     print("Estaciones:         %s" % (", ".join(permisos) if permisos else "ninguna declarada"))
-    print("Alcance:            %s" % (args.estado if args.estado else "nacional"))
+    print("Alcance:            %s" % alcance)
     print("Tope de estaciones: %d (%s)" % (
         args.max_estaciones,
         "Plan Estación" if args.max_estaciones == 1 else

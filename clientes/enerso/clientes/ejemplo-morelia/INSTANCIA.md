@@ -1,12 +1,12 @@
-# ENERSO · Inteligencia de Combustibles
+# Cliente de ejemplo · Morelia
 
 Instancia generada con `preparar_cliente.py`.
 
-- Slug: `enerso`
-- Estaciones declaradas: ninguna
-- Radio de competencia: 5 km
-- Tope de estaciones propias: 10
-- Alcance de datos: Jalisco, Guanajuato, Michoacán, Aguascalientes, Colima, Zacatecas
+- Slug: `ejemplo-morelia`
+- Estaciones declaradas: PL/15/EXP/ES/2025
+- Radio de competencia: 5.0 km
+- Tope de estaciones propias: 1
+- Alcance de datos: Michoacán
 - Generada: 2026-10-07
 
 Para actualizar los datos, vuelve a correr el generador sobre la carpeta
