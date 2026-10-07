@@ -128,12 +128,15 @@ jobs:
               falta=1
             fi
           done
-          for arg in --max-estaciones --centro --zoom; do
+          for arg in --max-estaciones --centro --zoom --estados; do
             if ! python3 preparar_cliente.py --help 2>/dev/null | grep -q -- "$arg"; then
               echo "::error::preparar_cliente.py NO acepta $arg: es una version anterior"
               falta=1
             fi
           done
+          if [ ! -f preparar_subcuentas.py ]; then
+            echo "::warning::falta preparar_subcuentas.py: las subcuentas de clientes no se regeneraran"
+          fi
           if [ "$falta" = "1" ]; then
             echo "Opciones que SI acepta xml_a_csv.py:"
             python3 xml_a_csv.py --help 2>&1 | head -30
@@ -164,14 +167,30 @@ jobs:
         run: |
           # Cada instancia se regenera con el corte recien publicado, de modo
           # que el cliente abra su tablero con los precios de esa manana.
+          # Region Occidente completa: es el alcance de la propuesta firmada.
+          # Cambiar esta lista sin actualizar el contrato rompe lo que se vendio.
           python3 preparar_cliente.py --origen . --salida clientes/enerso \
                   --slug enerso --nombre "ENERSO · Inteligencia de Combustibles" \
                   --subtitulo "Monitoreo y Estrategia Comercial de Precios (SENER / CNE / SAT)" \
-                  --estado Jalisco --radio 5 --max-estaciones 10 \
+                  --estados "Jalisco,Guanajuato,Michoacán,Aguascalientes,Colima,Zacatecas" \
+                  --radio 5 --max-estaciones 10 \
                   --centro "20.6736,-103.3440" --zoom 12 \
                   --xlsx historico.xlsx
+
+          # Subcuentas de clientes de ENERSO: cada una acotada al radio de su
+          # plaza. El padron manda; una fila en "activo = no" borra su carpeta.
+          if [ -f preparar_subcuentas.py ] && [ -f clientes/enerso/subcuentas.csv ]; then
+            python3 preparar_subcuentas.py --origen . \
+                    --padron clientes/enerso/subcuentas.csv \
+                    --salida clientes/enerso/clientes \
+                    --maximo 15
+          else
+            echo "Sin padron de subcuentas: se omite ese paso."
+          fi
+
           echo "Instancias regeneradas:"
           ls -1 clientes/
+          [ -d clientes/enerso/clientes ] && ls -1 clientes/enerso/clientes/ || true
 
       - name: Publicar si hubo cambios
         if: steps.validacion.outputs.omitir == '0'
