@@ -132,6 +132,25 @@ def estaciones_entregadas(ruta):
         return len({normaliza_permiso(f.get("Permiso CRE")) for f in csv.DictReader(fh)})
 
 
+def recortar_reporte(ruta):
+    """El reporte comparativo trae bloques nacional, region y marca. Una subcuenta
+    no debe llevarse el detalle regional: contradice la promesa de que solo ve su
+    plaza. Se conserva unicamente el bloque nacional, que es la referencia publica
+    que el tablero usa como benchmark, y se descartan los demas."""
+    if not os.path.exists(ruta):
+        return 0, 0
+    with io.open(ruta, encoding="utf-8-sig", newline="") as fh:
+        filas = list(csv.DictReader(fh))
+    if not filas or "Bloque" not in filas[0]:
+        return len(filas), len(filas)
+    conservadas = [f for f in filas if (f.get("Bloque") or "").strip().lower() == "nacional"]
+    with io.open(ruta, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(filas[0].keys()), lineterminator="\n")
+        w.writeheader()
+        w.writerows(conservadas)
+    return len(filas), len(conservadas)
+
+
 def leer_padron(ruta):
     with io.open(ruta, encoding="utf-8-sig", newline="") as fh:
         filas = list(csv.DictReader(fh))
@@ -246,6 +265,8 @@ def main():
                 a, d = recortar_por_permisos(ruta, permitidos)
                 if archivo == "fallback.csv":
                     antes, despues = a, d
+
+        recortar_reporte(os.path.join(destino, "reporte_mercado.csv"))
 
         # El catálogo del radio y las estaciones que de verdad reportan precio no
         # son lo mismo: se informa lo entregado, no lo teóricamente cercano.

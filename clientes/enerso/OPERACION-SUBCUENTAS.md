@@ -26,12 +26,19 @@ competidores de su radio, con nombre, distancia y precio.
 - Los demás clientes de ENERSO ni sus plazas.
 - Cuántos clientes tiene ENERSO ni quiénes son.
 - Cualquier estación fuera de su propio radio.
+- El desglose regional del reporte comparativo. De ese archivo solo conserva el
+  bloque nacional, que es la referencia pública que el tablero usa como
+  benchmark.
 
 Esto no es un permiso configurable que se pueda saltar: **la carpeta de cada
 cliente contiene físicamente solo las estaciones de su radio.** Aunque alguien
 comparta la URL o inspeccione los archivos, del otro lado sigue estando
-únicamente su vecindario. En números reales: la instancia de ENERSO pesa 1.2 MB
-con 2,834 estaciones; una subcuenta típica pesa 0.06 MB con 173.
+únicamente su vecindario.
+
+En números reales, comparando el archivo de precios de cada quien: el de ENERSO
+pesa 968 KB con 2,834 estaciones; el de la subcuenta de León pesa 10 KB con 173.
+La carpeta completa de una subcuenta pesa alrededor de 1.1 MB, pero casi todo es
+el tablero mismo (`index.html`, 757 KB) y los iconos, que son idénticos en todas.
 
 ---
 
