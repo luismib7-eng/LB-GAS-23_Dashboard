@@ -7,7 +7,7 @@ Instancia generada con `preparar_cliente.py`.
 - Radio de competencia: 5 km
 - Tope de estaciones propias: 10
 - Alcance de datos: Jalisco, Guanajuato, Michoacán, Aguascalientes, Colima, Zacatecas
-- Generada: 2026-10-08
+- Generada: 2026-10-09
 
 Para actualizar los datos, vuelve a correr el generador sobre la carpeta
 nacional ya actualizada. La configuracion se inyecta dentro de `index.html`

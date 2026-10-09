@@ -9,7 +9,7 @@ Subcuenta de cliente generada con `preparar_subcuentas.py`.
 - Radio de competencia en pantalla: 5.0 km
 - Radio de los datos entregados: 15.0 km
 - Estaciones que reportan precio en su recorte: 34
-- Generada: 2026-10-08
+- Generada: 2026-10-09
 
 Esta carpeta contiene únicamente las estaciones del radio anterior.
 No incluye la región completa ni la cartera de la comercializadora.
