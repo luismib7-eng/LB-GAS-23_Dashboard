@@ -6026,3 +6026,126 @@ Fecha,Ambito,Clave,Producto,Promedio,Estaciones
 2026-10-10,region,Sureste,Diesel,27.4518,581
 2026-10-10,region,Sureste,Premium,28.5763,683
 2026-10-10,region,Sureste,Regular,24.4759,727
+2026-10-11,estado,Aguascalientes,Diesel,27.0154,158
+2026-10-11,estado,Aguascalientes,Premium,29.1545,202
+2026-10-11,estado,Aguascalientes,Regular,23.9174,204
+2026-10-11,estado,Baja California,Diesel,26.0955,368
+2026-10-11,estado,Baja California,Premium,28.1711,575
+2026-10-11,estado,Baja California,Regular,22.8756,602
+2026-10-11,estado,Baja California Sur,Diesel,27.6518,138
+2026-10-11,estado,Baja California Sur,Premium,29.6161,170
+2026-10-11,estado,Baja California Sur,Regular,24.4210,181
+2026-10-11,estado,Campeche,Diesel,27.0582,118
+2026-10-11,estado,Campeche,Premium,28.6372,116
+2026-10-11,estado,Campeche,Regular,24.0387,126
+2026-10-11,estado,Chiapas,Diesel,26.7408,306
+2026-10-11,estado,Chiapas,Premium,28.3221,342
+2026-10-11,estado,Chiapas,Regular,23.7625,354
+2026-10-11,estado,Chihuahua,Diesel,26.7721,395
+2026-10-11,estado,Chihuahua,Premium,26.9537,475
+2026-10-11,estado,Chihuahua,Regular,22.4654,598
+2026-10-11,estado,Ciudad de México,Diesel,26.9593,167
+2026-10-11,estado,Ciudad de México,Premium,28.7154,349
+2026-10-11,estado,Ciudad de México,Regular,23.7792,357
+2026-10-11,estado,Coahuila,Diesel,27.0274,291
+2026-10-11,estado,Coahuila,Premium,28.7813,472
+2026-10-11,estado,Coahuila,Regular,23.7777,487
+2026-10-11,estado,Colima,Diesel,27.0291,107
+2026-10-11,estado,Colima,Premium,28.9107,126
+2026-10-11,estado,Colima,Regular,23.8382,130
+2026-10-11,estado,Durango,Diesel,27.1997,189
+2026-10-11,estado,Durango,Premium,29.3114,194
+2026-10-11,estado,Durango,Regular,24.0714,222
+2026-10-11,estado,Guanajuato,Diesel,27.0371,610
+2026-10-11,estado,Guanajuato,Premium,29.1759,694
+2026-10-11,estado,Guanajuato,Regular,23.8600,723
+2026-10-11,estado,Guerrero,Diesel,27.0735,201
+2026-10-11,estado,Guerrero,Premium,28.9907,253
+2026-10-11,estado,Guerrero,Regular,23.8610,251
+2026-10-11,estado,Hidalgo,Diesel,26.9891,270
+2026-10-11,estado,Hidalgo,Premium,28.1241,286
+2026-10-11,estado,Hidalgo,Regular,23.6692,311
+2026-10-11,estado,Jalisco,Diesel,27.1269,777
+2026-10-11,estado,Jalisco,Premium,29.4279,941
+2026-10-11,estado,Jalisco,Regular,23.9954,978
+2026-10-11,estado,Michoacán,Diesel,27.0074,513
+2026-10-11,estado,Michoacán,Premium,29.0385,542
+2026-10-11,estado,Michoacán,Regular,23.9751,560
+2026-10-11,estado,Morelos,Diesel,26.9737,159
+2026-10-11,estado,Morelos,Premium,28.4931,188
+2026-10-11,estado,Morelos,Regular,23.8117,189
+2026-10-11,estado,México,Diesel,26.9767,1018
+2026-10-11,estado,México,Premium,28.4568,1252
+2026-10-11,estado,México,Regular,23.7158,1267
+2026-10-11,estado,Nayarit,Diesel,27.3601,138
+2026-10-11,estado,Nayarit,Premium,29.4996,148
+2026-10-11,estado,Nayarit,Regular,23.9985,162
+2026-10-11,estado,Nuevo León,Diesel,27.0178,369
+2026-10-11,estado,Nuevo León,Premium,29.5704,711
+2026-10-11,estado,Nuevo León,Regular,24.1513,729
+2026-10-11,estado,Oaxaca,Diesel,27.4578,280
+2026-10-11,estado,Oaxaca,Premium,29.2319,279
+2026-10-11,estado,Oaxaca,Regular,24.0570,295
+2026-10-11,estado,Puebla,Diesel,26.9671,534
+2026-10-11,estado,Puebla,Premium,28.1018,594
+2026-10-11,estado,Puebla,Regular,23.7337,627
+2026-10-11,estado,Querétaro,Diesel,26.9005,316
+2026-10-11,estado,Querétaro,Premium,28.6423,368
+2026-10-11,estado,Querétaro,Regular,23.7437,372
+2026-10-11,estado,Quintana Roo,Diesel,28.0892,211
+2026-10-11,estado,Quintana Roo,Premium,29.0697,243
+2026-10-11,estado,Quintana Roo,Regular,25.1087,258
+2026-10-11,estado,San Luis Potosí,Diesel,27.0609,252
+2026-10-11,estado,San Luis Potosí,Premium,28.4920,277
+2026-10-11,estado,San Luis Potosí,Regular,23.9442,306
+2026-10-11,estado,Sinaloa,Diesel,27.0300,443
+2026-10-11,estado,Sinaloa,Premium,29.2474,526
+2026-10-11,estado,Sinaloa,Regular,23.9592,555
+2026-10-11,estado,Sonora,Diesel,26.9469,360
+2026-10-11,estado,Sonora,Premium,28.6091,512
+2026-10-11,estado,Sonora,Regular,23.2515,551
+2026-10-11,estado,Tabasco,Diesel,26.9866,197
+2026-10-11,estado,Tabasco,Premium,28.3157,240
+2026-10-11,estado,Tabasco,Regular,23.8099,244
+2026-10-11,estado,Tamaulipas,Diesel,26.4134,340
+2026-10-11,estado,Tamaulipas,Premium,26.2059,513
+2026-10-11,estado,Tamaulipas,Regular,21.9132,599
+2026-10-11,estado,Tlaxcala,Diesel,26.7705,130
+2026-10-11,estado,Tlaxcala,Premium,27.8027,128
+2026-10-11,estado,Tlaxcala,Regular,23.5393,140
+2026-10-11,estado,Veracruz,Diesel,26.9965,682
+2026-10-11,estado,Veracruz,Premium,28.0757,752
+2026-10-11,estado,Veracruz,Regular,23.8019,819
+2026-10-11,estado,Yucatán,Diesel,27.1025,252
+2026-10-11,estado,Yucatán,Premium,28.1785,324
+2026-10-11,estado,Yucatán,Regular,24.1623,343
+2026-10-11,estado,Zacatecas,Diesel,27.0994,216
+2026-10-11,estado,Zacatecas,Premium,28.8511,190
+2026-10-11,estado,Zacatecas,Regular,24.0012,229
+2026-10-11,nacional,MX,Diesel,26.9938,10513
+2026-10-11,nacional,MX,Premium,28.5931,12993
+2026-10-11,nacional,MX,Regular,23.6925,13780
+2026-10-11,region,Centro,Diesel,26.9551,2594
+2026-10-11,region,Centro,Premium,28.3859,3165
+2026-10-11,region,Centro,Regular,23.7229,3263
+2026-10-11,region,Golfo,Diesel,26.9943,879
+2026-10-11,region,Golfo,Premium,28.1338,992
+2026-10-11,region,Golfo,Regular,23.8037,1063
+2026-10-11,region,Noreste,Diesel,26.8646,1252
+2026-10-11,region,Noreste,Premium,28.3554,1973
+2026-10-11,region,Noreste,Regular,23.4036,2121
+2026-10-11,region,Noroeste,Diesel,26.8625,1447
+2026-10-11,region,Noroeste,Premium,28.8095,1931
+2026-10-11,region,Noroeste,Regular,23.4949,2051
+2026-10-11,region,Norte,Diesel,26.9105,584
+2026-10-11,region,Norte,Premium,27.6374,669
+2026-10-11,region,Norte,Regular,22.9002,820
+2026-10-11,region,Occidente,Diesel,27.0639,2381
+2026-10-11,region,Occidente,Premium,29.1994,2695
+2026-10-11,region,Occidente,Regular,23.9443,2824
+2026-10-11,region,Sur,Diesel,27.0809,787
+2026-10-11,region,Sur,Premium,28.8061,874
+2026-10-11,region,Sur,Regular,23.8865,900
+2026-10-11,region,Sureste,Diesel,27.4518,581
+2026-10-11,region,Sureste,Premium,28.5735,683
+2026-10-11,region,Sureste,Regular,24.4768,727
