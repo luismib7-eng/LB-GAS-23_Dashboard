@@ -1508,6 +1508,37 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
 /* Cumplimiento de la Estrategia Nacional */
 .badge--tope{background:var(--premium);color:#fff;font-weight:700}
 .fin--tope{border-top-color:var(--premium)}
+
+/* ── Panorama por entidad, plazas rápidas y glosario ───────────── */
+.kpi__rango{margin:.25rem 0 0;font-size:.74rem;color:var(--muted);letter-spacing:.01em}
+.plazas{display:flex;flex-wrap:wrap;gap:.4rem;align-items:center;margin:.35rem 0 0}
+.plazas__label{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:.2rem}
+.plaza{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--text);
+  border-radius:999px;padding:.3rem .7rem;font:inherit;font-size:.78rem;cursor:pointer;
+  transition:border-color .15s,background .15s,color .15s;white-space:nowrap}
+.plaza:hover{border-color:var(--brand-gold)}
+.plaza.is-active{background:var(--brand-gold);border-color:var(--brand-gold);color:#1A1203;font-weight:600}
+.plaza__n{opacity:.65;margin-left:.35rem;font-variant-numeric:tabular-nums}
+.pan__tabla{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.pan__tabla th,.pan__tabla td{padding:.42rem .6rem;text-align:right;border-bottom:1px solid var(--line);font-size:.86rem}
+.pan__tabla th:first-child,.pan__tabla td:first-child{text-align:left}
+.pan__tabla thead th{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.pan__fila{cursor:pointer;transition:background .12s}
+.pan__fila:hover{background:var(--surface-2,rgba(127,127,127,.08))}
+.pan__fila.is-active{background:rgba(216,166,74,.14)}
+.pan__fila.is-active td:first-child{box-shadow:inset 3px 0 0 var(--brand-gold)}
+.pan__marca{display:inline-block;margin-left:.4rem;font-size:.68rem;padding:.08rem .38rem;border-radius:999px;
+  letter-spacing:.03em;vertical-align:middle}
+.pan__marca--bajo{background:rgba(16,185,129,.16);color:var(--ok,#10B981)}
+.pan__marca--alto{background:rgba(239,68,68,.16);color:var(--bad,#EF4444)}
+.pan__na{color:var(--muted)}
+.pan__pie{margin:.6rem 0 0;font-size:.76rem;color:var(--muted)}
+.glos h3{margin:1rem 0 .3rem;font-size:.95rem;color:var(--brand-gold)}
+.glos h3:first-child{margin-top:0}
+.glos p{margin:0 0 .5rem;font-size:.86rem;line-height:1.5}
+.glos ul{margin:.2rem 0 .6rem 1.1rem;padding:0;font-size:.86rem;line-height:1.5}
+.glos .glos__nota{font-size:.78rem;color:var(--muted);border-top:1px solid var(--line);padding-top:.6rem;margin-top:.9rem}
+@media(max-width:640px){.pan__tabla th,.pan__tabla td{padding:.38rem .35rem;font-size:.78rem}}
 </style>
 </head>
 <body>
@@ -1574,6 +1605,11 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       <span class="btn__icon" aria-hidden="true">★</span> Mis estaciones
     </button>
 
+    <button class="btn btn--ghost" id="glosarioBtn" type="button"
+            title="Octanajes, Zona Libre de la Frontera Norte y techo de la Estrategia Nacional">
+      <span class="btn__icon" aria-hidden="true">?</span> Notas regulatorias
+    </button>
+
     <button class="switch-brand" id="mineToggle" type="button" aria-pressed="false">
       <span class="switch-brand__track" aria-hidden="true"><span class="switch-brand__knob"></span></span>
       <span class="switch-brand__label">Solo mis estaciones</span>
@@ -1581,6 +1617,10 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
     </button>
 
     <p class="controls__note" id="datasetNote">—</p>
+
+    <div class="plazas" id="plazasBar" hidden>
+      <span class="plazas__label">Plazas de mayor parque</span>
+    </div>
   </div>
 
   <p class="wrap controls__resumen" id="filtersSummary"></p>
@@ -1607,18 +1647,21 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       <p class="kpi__value">—</p>
       <p class="kpi__delta"></p>
       <p class="kpi__bench"></p>
+      <p class="kpi__rango"></p>
     </article>
     <article class="kpi kpi--premium" id="kpiPremium">
       <p class="kpi__label">Premium <span class="kpi__hint" data-tip>i</span></p>
       <p class="kpi__value">—</p>
       <p class="kpi__delta"></p>
       <p class="kpi__bench"></p>
+      <p class="kpi__rango"></p>
     </article>
     <article class="kpi kpi--diesel" id="kpiDiesel">
       <p class="kpi__label">Diésel <span class="kpi__hint" data-tip>i</span></p>
       <p class="kpi__value">—</p>
       <p class="kpi__delta"></p>
       <p class="kpi__bench"></p>
+      <p class="kpi__rango"></p>
     </article>
 
     <article class="extreme extreme--low" id="cardMin">
@@ -1634,6 +1677,26 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       <p class="extreme__addr"></p>
     </article>
   </section>
+
+  <!-- ══════════════ PANORAMA POR ENTIDAD ══════════════ -->
+  <details class="panel" id="panoramaPanel">
+    <summary class="briefing__summary">
+      <span>
+        <span class="panel__title" id="panoramaTitle">Panorama de precios por estado</span>
+        <span class="panel__sub" id="panoramaSub">Promedio de cada producto y número de estaciones.</span>
+      </span>
+      <span class="sim__chevron" aria-hidden="true">▾</span>
+    </summary>
+    <div class="panel__body">
+      <div class="scroller">
+        <table class="pan__tabla" id="panoramaTabla">
+          <thead id="panoramaHead"></thead>
+          <tbody id="panoramaBody"></tbody>
+        </table>
+      </div>
+      <p class="pan__pie" id="panoramaPie"></p>
+    </div>
+  </details>
 
   <!-- ══════════════ REGLA DE DISPERSIÓN ══════════════ -->
   <section class="panel rail" aria-label="Dispersión de precios">
@@ -1973,6 +2036,69 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
 </footer>
 
 <!-- ══════════════ GESTOR DE MIS ESTACIONES ══════════════ -->
+<div class="modal" id="glosarioModal" hidden>
+  <div class="modal__backdrop" data-close></div>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="glosarioTitle">
+    <div class="modal__head">
+      <h2 class="panel__title" id="glosarioTitle">Notas regulatorias y de mercado</h2>
+      <button class="btn btn--ghost" type="button" data-close aria-label="Cerrar">✕</button>
+    </div>
+    <div class="modal__results glos">
+      <h3>Qué distingue a Regular de Premium</h3>
+      <p>La NOM-016-CRE-2016 clasifica las gasolinas por <strong>índice de octano</strong>, que es el
+         promedio de los métodos RON y MON: (RON+MON)/2.</p>
+      <ul>
+        <li><strong>Regular:</strong> índice de octano mínimo de <strong>87</strong>.</li>
+        <li><strong>Premium:</strong> índice de octano mínimo de <strong>91</strong>, con RON mínimo de 94.</li>
+      </ul>
+      <p>La norma regula la especificación del combustible, no el precio. Dos estaciones con el mismo
+         octanaje pueden publicar precios distintos sin incumplir nada.</p>
+
+      <h3>Por qué la frontera norte publica precios más bajos</h3>
+      <p>Los municipios comprendidos en la región fronteriza norte que delimita el decreto de estímulos
+         fiscales operan con <strong>IVA al 8%</strong> en lugar del 16%, beneficio vigente hasta el
+         31 de diciembre de 2026. A eso se suman los estímulos de IEPS a los combustibles que la
+         Secretaría de Hacienda publica periódicamente en el Diario Oficial de la Federación.</p>
+      <p>Consecuencia práctica: un precio de la franja fronteriza es legítimamente más bajo y
+         <strong>no es comparable</strong> contra el del centro u occidente del país. La comparación que
+         sirve es la local, dentro del radio de cada estación, que es la que usa este tablero.</p>
+
+      <h3>El techo de la Estrategia Nacional</h3>
+      <p>La Estrategia Nacional para Estabilizar el Precio de Gasolina Regular y Diésel (SENER,
+         vigente de agosto de 2026 a febrero de 2027) fija un compromiso de precio al público por
+         debajo de <strong>$24.00</strong> por litro en Regular y de <strong>$27.00</strong> en Diésel.
+         Premium queda fuera: su precio es libre.</p>
+      <p>Es un <strong>pacto voluntario, no una norma sancionable</strong>. Excederlo no genera una multa
+         automática; el riesgo es reputacional y comercial —exposición en los monitoreos de Profeco,
+         posición en licitaciones—. El tablero lo marca como alerta, no como incumplimiento.</p>
+
+      <h3>Cómo se clasifica el precio en este tablero</h3>
+      <p>La posición de cada estación se calcula por <strong>percentiles de precio dentro de su radio
+         geodésico</strong> (P25, P50, P75 y P90), no contra el promedio municipal ni con la metodología
+         de márgenes de Profeco, que requiere el precio de referencia en TAR y ese dato no viene en las
+         publicaciones de la Comisión Nacional de Energía.</p>
+
+      <h3>Qué no contienen los datos</h3>
+      <ul>
+        <li><strong>Marca o bandera comercial:</strong> la CNE publica al permisionario (razón social),
+            no la imagen comercial. El agrupamiento útil es por grupo operador.</li>
+        <li><strong>Volumen de venta:</strong> la fuente publica precios al público. El tablero no estima
+            litros vendidos ni participación de mercado.</li>
+        <li><strong>Costo por litro:</strong> el precio en TAR más flete no es público. Sin capturar el
+            costo propio, el tablero calcula diferenciales contra el mercado local, nunca rentabilidad.</li>
+      </ul>
+
+      <p class="glos__nota">Fuente de los precios: padrón público de la Comisión Nacional de Energía,
+         actualizado en cada corte. Las referencias normativas se incluyen como contexto de lectura y no
+         sustituyen la asesoría fiscal o regulatoria.</p>
+    </div>
+    <div class="modal__foot">
+      <span class="modal__hint"></span>
+      <button class="btn" type="button" data-close>Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="mineModal" hidden>
   <div class="modal__backdrop" data-close></div>
   <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="mineModalTitle">
@@ -2059,7 +2185,7 @@ window.APP_CONFIG = {
   REPORT_CSV: "reporte_mercado.csv",
 
   /* ---------- Plan contratado ---------- */
-  MIS_MAX: 10,
+  MIS_MAX: 5,
 
   /* ---------- Comportamiento ---------- */
   REFRESH_MINUTES: 10,
@@ -2071,13 +2197,13 @@ window.APP_CONFIG = {
   MAPA_MAX_PUNTOS: 2500,
   ELASTICIDAD_PCT_POR_10_CENTAVOS: 2,
   ESTADO_POR_DEFECTO: "",
-  MAPA_CENTRO: [20.6736, -103.344],
+  MAPA_CENTRO: [],
   MAPA_ZOOM: 12,
-  HISTORY_XLSX: "historico.xlsx",
+  HISTORY_XLSX: "",
 
   /* ---------- Identidad ---------- */
-  TITLE: "ENERSO · Inteligencia de Combustibles · Monitor de Precios",
-  SUBTITLE: "Monitoreo y Estrategia Comercial de Precios (SENER / CNE / SAT)",
+  TITLE: "ENERSO · Monitor de Precios",
+  SUBTITLE: "Monitor de precios de combustibles",
   LOGO_URL: "",
   REPO_URL: "",
 
@@ -3445,8 +3571,206 @@ window.APP_CONFIG = {
           : "todas por debajo del tope " + tope.label + " (" + money(tope.valor) + ")");
       }
       benchEl.textContent = parts.join(" · ");
+
+      /* Rango extremo del producto DENTRO de la selección activa. Se recorre a
+         mano en lugar de Math.min.apply: con 13,800 precios el apply revienta
+         la pila de argumentos en algunos navegadores. */
+      var rangoEl = card.querySelector(".kpi__rango");
+      if (rangoEl) {
+        if (!vals.length) { rangoEl.textContent = ""; }
+        else {
+          var lo = vals[0], hi = vals[0];
+          for (var k = 1; k < vals.length; k++) {
+            if (vals[k] < lo) lo = vals[k];
+            if (vals[k] > hi) hi = vals[k];
+          }
+          rangoEl.textContent = lo === hi
+            ? "Todas en " + money(lo)
+            : "Rango en la selección: " + money(lo) + " – " + money(hi);
+        }
+      }
     });
   }
+
+  /* ---------------------------------------------------------
+     PANORAMA POR ENTIDAD · tabla macro con drill-down en un clic
+
+     Se construye sobre el padrón realmente cargado, no sobre una lista fija
+     de 32 estados: en una instancia de cliente que solo trae tres estados la
+     tabla muestra tres. Y si solo hay uno, baja un nivel y compara municipios,
+     que es la lectura que sirve en esa instancia.
+
+     Cuenta ESTACIONES (permisos únicos), no registros: con "todos los
+     periodos" seleccionado cada estación aparece una vez por corte, y sumar
+     filas inflaría el conteo. Por eso el panorama siempre se calcula sobre un
+     solo corte y lo declara en el subtítulo.
+     --------------------------------------------------------- */
+
+  function panoramaCorte() { return state.period || (periods()[0] || ""); }
+
+  function panoramaAgrupado() {
+    var corte = panoramaCorte();
+    var base = state.rows.filter(function (r) { return !corte || r.fecha === corte; });
+
+    var estados = {};
+    base.forEach(function (r) { if (r.estado) estados[r.estado] = true; });
+    var clave = Object.keys(estados).length >= 2 ? "estado" : "municipio";
+
+    var grupos = {}, vistos = {};
+    base.forEach(function (r) {
+      var k = r[clave];
+      if (!k) return;
+      var g = grupos[k] || (grupos[k] = { regular: [], premium: [], diesel: [], n: 0, estado: r.estado || "" });
+      var id = k + "|" + r.permiso;
+      if (!vistos[id]) { vistos[id] = true; g.n++; }
+      if (r.regular !== null) g.regular.push(r.regular);
+      if (r.premium !== null) g.premium.push(r.premium);
+      if (r.diesel !== null) g.diesel.push(r.diesel);
+    });
+
+    var lista = Object.keys(grupos).map(function (k) {
+      var g = grupos[k];
+      return { k: k, n: g.n, estado: g.estado,
+               regular: avg(g.regular), premium: avg(g.premium), diesel: avg(g.diesel) };
+    });
+    return { clave: clave, corte: corte, lista: lista };
+  }
+
+  function renderPanorama() {
+    var panel = $("panoramaPanel");
+    if (!panel) return;
+    var datos = panoramaAgrupado(), p = state.product;
+
+    if (datos.lista.length < 2) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+
+    var nivel = datos.clave === "estado" ? "estado" : "municipio";
+    $("panoramaTitle").textContent = "Panorama de precios por " + nivel;
+
+    /* Orden: por el producto activo, del más caro al más barato. Las entidades
+       sin precio de ese producto se van al final en lugar de ensuciar el tope. */
+    var lista = datos.lista.slice().sort(function (a, b) {
+      if (a[p] === null && b[p] === null) return b.n - a.n;
+      if (a[p] === null) return 1;
+      if (b[p] === null) return -1;
+      return b[p] - a[p];
+    });
+
+    var conPrecio = lista.filter(function (x) { return x[p] !== null; });
+    var piso = conPrecio.length ? conPrecio[conPrecio.length - 1].k : null;
+    var techo = conPrecio.length ? conPrecio[0].k : null;
+    if (conPrecio.length < 2) { piso = null; techo = null; }
+
+    var actual = datos.clave === "estado" ? state.estado : state.municipio;
+    var totalEst = lista.reduce(function (a, x) { return a + x.n; }, 0);
+
+    $("panoramaSub").textContent = "Corte " + (datos.corte ? fmtPeriod(datos.corte) : "vigente") +
+      " · " + lista.length.toLocaleString("es-MX") + " " + (nivel === "estado" ? "entidades" : "municipios") +
+      " · " + totalEst.toLocaleString("es-MX") + " estaciones";
+
+    $("panoramaHead").innerHTML = "<tr>" +
+      "<th>" + (nivel === "estado" ? "Estado" : "Municipio") + "</th>" +
+      "<th>Regular</th><th>Premium</th><th>Diésel</th><th>Estaciones</th></tr>";
+
+    function celda(v) { return v === null ? '<span class="pan__na">—</span>' : money(v); }
+
+    $("panoramaBody").innerHTML = lista.map(function (x) {
+      var marca = x.k === techo ? '<span class="pan__marca pan__marca--alto">más alto</span>'
+                : x.k === piso ? '<span class="pan__marca pan__marca--bajo">más bajo</span>' : "";
+      return '<tr class="pan__fila' + (x.k === actual ? " is-active" : "") + '" data-pan="' + esc(x.k) + '" ' +
+             'title="Clic para filtrar el tablero por ' + esc(x.k) + '">' +
+             "<td>" + esc(x.k) + marca + "</td>" +
+             "<td>" + celda(x.regular) + "</td>" +
+             "<td>" + celda(x.premium) + "</td>" +
+             "<td>" + celda(x.diesel) + "</td>" +
+             "<td>" + x.n.toLocaleString("es-MX") + "</td></tr>";
+    }).join("");
+
+    $("panoramaPie").textContent = "Un clic en cualquier fila filtra el tablero completo —mapa, " +
+      "explorador y comparativas— por " + (nivel === "estado" ? "esa entidad" : "ese municipio") +
+      ". Volver a hacer clic en la fila activa quita el filtro. Las columnas son promedios del corte, " +
+      "calculados solo sobre las estaciones que publicaron ese producto.";
+  }
+
+  function aplicarPanorama(valor) {
+    var datos = panoramaAgrupado();
+    if (datos.clave === "estado") {
+      state.estado = (state.estado === valor) ? "" : valor;
+      state.municipio = "";
+      buildMunicipioSelect();
+      var selE = $("estadoSelect"); if (selE) selE.value = state.estado;
+    } else {
+      state.municipio = (state.municipio === valor) ? "" : valor;
+      var selM = $("municipioSelect"); if (selM) selM.value = state.municipio;
+    }
+    state.page = 1;
+    mapaEncuadrado = false;
+    render();
+  }
+
+  /* ---------- Plazas de mayor parque ----------
+     La botonera se calcula del padrón cargado: nada de una lista fija de
+     ciudades que en la instancia de un cliente quedaría vacía o apuntando a
+     municipios que no tiene. El encuadre del mapa sale de las coordenadas
+     reales de esas estaciones, no de coordenadas escritas a mano. */
+
+  function plazasTop(max) {
+    var corte = panoramaCorte();
+    var cuenta = {}, vistos = {};
+    state.rows.forEach(function (r) {
+      if (corte && r.fecha !== corte) return;
+      if (!r.municipio) return;
+      if (state.estado && state.estado !== SIN_UBICACION && r.estado !== state.estado) return;
+      var id = r.municipio + "|" + r.permiso;
+      if (vistos[id]) return;
+      vistos[id] = true;
+      var c = cuenta[r.municipio] || (cuenta[r.municipio] = { n: 0, estado: r.estado || "" });
+      c.n++;
+    });
+    return Object.keys(cuenta).map(function (m) {
+      return { m: m, n: cuenta[m].n, estado: cuenta[m].estado };
+    }).sort(function (a, b) {
+      return b.n - a.n || a.m.localeCompare(b.m, "es");
+    }).slice(0, max || 8);
+  }
+
+  function renderPlazas() {
+    var bar = $("plazasBar");
+    if (!bar) return;
+    var lista = plazasTop(8);
+    if (lista.length < 2) { bar.hidden = true; return; }
+    bar.hidden = false;
+    bar.innerHTML = '<span class="plazas__label">Plazas de mayor parque</span>' +
+      lista.map(function (x) {
+        return '<button class="plaza' + (state.municipio === x.m ? " is-active" : "") +
+               '" type="button" data-plaza="' + esc(x.m) + '" data-plaza-estado="' + esc(x.estado) + '" ' +
+               'title="' + x.n.toLocaleString("es-MX") + ' estaciones en ' + esc(x.m) + '">' +
+               esc(x.m) + '<span class="plaza__n">' + x.n.toLocaleString("es-MX") + "</span></button>";
+      }).join("");
+  }
+
+  function aplicarPlaza(muni, estado) {
+    if (state.municipio === muni) {
+      state.municipio = "";
+    } else {
+      if (estado && state.estado !== estado) {
+        state.estado = estado;
+        var selE = $("estadoSelect"); if (selE) selE.value = estado;
+        buildMunicipioSelect();
+      }
+      state.municipio = muni;
+    }
+    var selM = $("municipioSelect"); if (selM) selM.value = state.municipio;
+    state.page = 1;
+    mapaEncuadrado = false;
+    render();
+  }
+
+  function abrirGlosario() { $("glosarioModal").hidden = false; }
+  function cerrarGlosario() { $("glosarioModal").hidden = true; }
 
   function renderExtremes(rows) {
     var p = state.product;
@@ -3961,6 +4285,8 @@ window.APP_CONFIG = {
     var rows = scoped();
     renderKpis(rows);
     renderExtremes(rows);
+    renderPanorama();
+    renderPlazas();
     renderRail(rows);
     renderTrend();
     renderCompare(rows);
@@ -5754,6 +6080,22 @@ window.APP_CONFIG = {
     }
 
     $("manageBtn").addEventListener("click", abrirGestor);
+
+    $("glosarioBtn").addEventListener("click", abrirGlosario);
+    $("glosarioModal").addEventListener("click", function (e) {
+      if (e.target.hasAttribute("data-close")) cerrarGlosario();
+    });
+
+    /* Delegación: la tabla del panorama y la botonera de plazas se repintan en
+       cada render, así que el listener vive en el contenedor y no en las filas. */
+    $("panoramaBody").addEventListener("click", function (e) {
+      var fila = e.target.closest("[data-pan]");
+      if (fila) aplicarPanorama(fila.getAttribute("data-pan"));
+    });
+    $("plazasBar").addEventListener("click", function (e) {
+      var b = e.target.closest("[data-plaza]");
+      if (b) aplicarPlaza(b.getAttribute("data-plaza"), b.getAttribute("data-plaza-estado"));
+    });
     $("mineModal").addEventListener("click", function (e) {
       if (e.target.hasAttribute("data-close")) { cerrarGestor(); return; }
       var add = e.target.closest("[data-agregar]");
@@ -5763,6 +6105,7 @@ window.APP_CONFIG = {
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && !$("mineModal").hidden) cerrarGestor();
+      if (e.key === "Escape" && !$("glosarioModal").hidden) cerrarGlosario();
     });
 
     var tGestor = null;
@@ -6031,9 +6374,26 @@ window.APP_CONFIG = {
         vigilar(reg.waiting || reg.installing);
         reg.addEventListener("updatefound", function () { vigilar(reg.installing); });
 
+        /* En la PRIMERA visita no hay controlador: el worker se instala y
+           llama a clients.claim(), lo que dispara controllerchange sin que
+           haya ninguna versión nueva que aplicar. Recargar ahí obligaba al
+           navegador a bajar otra vez fallback.csv, el catálogo y el histórico
+           —unos 6.5 MB— en cada estreno. Solo se recarga cuando ya existía un
+           controlador, que es el caso de una actualización de verdad. */
+        var teniaControlador = !!navigator.serviceWorker.controller;
         var recargando = false;
         navigator.serviceWorker.addEventListener("controllerchange", function () {
-          if (recargando) return;      // Chrome puede emitirlo más de una vez
+          if (recargando) return;          // Chrome puede emitirlo más de una vez
+          if (!teniaControlador) {
+            /* Primera instalación: el worker tomó control con clients.claim()
+               y no hay ninguna versión nueva que aplicar. Se consume este
+               evento y SE ARMA la bandera: si más tarde, con la pestaña aún
+               abierta, se publica una versión y el usuario acepta el aviso,
+               ese segundo controllerchange sí debe recargar. Sin armarla, el
+               botón de actualizar se quedaría sin efecto en esa sesión. */
+            teniaControlador = true;
+            return;
+          }
           recargando = true;
           location.reload();
         });

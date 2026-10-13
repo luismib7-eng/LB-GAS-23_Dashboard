@@ -1,11 +1,11 @@
-# ENERSO · Inteligencia de Combustibles
+# ENERSO
 
 Instancia generada con `preparar_cliente.py`.
 
 - Slug: `enerso`
 - Estaciones declaradas: ninguna
 - Radio de competencia: 5 km
-- Tope de estaciones propias: 10
+- Tope de estaciones propias: 5
 - Alcance de datos: Jalisco, Guanajuato, Michoacán, Aguascalientes, Colima, Zacatecas
 - Generada: 2026-10-12
 
