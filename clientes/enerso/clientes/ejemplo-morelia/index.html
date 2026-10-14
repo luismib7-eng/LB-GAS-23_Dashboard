@@ -3218,7 +3218,12 @@ window.APP_CONFIG = {
     state.dimension = detectDimension();
     buildGeoSelects();
 
-    var mias = state.rows.filter(function (r) { return r._own; }).length;
+    /* Un renglon por estacion Y por corte: contar renglones da "10 sucursales
+       propias" cuando son 2 estaciones vistas en 5 cortes. Se cuentan permisos
+       unicos, igual que la cifra de estaciones de arriba. */
+    var misClaves = {};
+    state.rows.forEach(function (r) { if (r._own) misClaves[permitKey(r.permiso)] = true; });
+    var mias = Object.keys(misClaves).length;
     var toggle = $("mineToggle");
     $("mineCount").textContent = mias ? "(" + mias + ")" : "";
     toggle.disabled = false;   // sin estaciones, el clic abre el gestor
@@ -3250,8 +3255,13 @@ window.APP_CONFIG = {
     }
     var malasCoords = state.rows.filter(function (r) { return r.coordInvalida; }).length;
     if (malasCoords) nota.push(malasCoords.toLocaleString("es-MX") + " registros con coordenada fuera de México, excluidos del mapa");
-    var artificiales = state.rows.filter(function (r) { return /^PLACE\//.test(r.permiso || ""); }).length;
-    if (artificiales) nota.push(artificiales + " sin permiso CRE en el catálogo");
+    var clavesArtificiales = {};
+    state.rows.forEach(function (r) {
+      if (/^PLACE\//.test(r.permiso || "")) clavesArtificiales[permitKey(r.permiso)] = true;
+    });
+    var artificiales = Object.keys(clavesArtificiales).length;
+    if (artificiales) nota.push(artificiales + " estacion" + (artificiales > 1 ? "es" : "") +
+                                " sin permiso CRE en el catálogo");
     if (quality.duplicados) nota.push(quality.duplicados + " permisos repetidos fusionados");
     if (quality.fueraRango) nota.push(quality.fueraRango + " precios fuera de rango descartados");
     $("datasetNote").textContent = nota.join(" · ");
@@ -3538,6 +3548,11 @@ window.APP_CONFIG = {
   /* Promedio del corte inmediato anterior. Si el padrón solo trae un periodo,
      se toma del histórico de promedios. */
   function previousPeriodAvg(product) {
+    /* Devuelve { valor, fecha, salto }. Antes devolvia un numero suelto y la
+       tarjeta lo rotulaba "periodo anterior", que el lector entiende como
+       "ayer". Con un hueco en la ventana el corte previo puede estar a once
+       dias, y el briefing ya lo declara: la tarjeta decia lo contrario en la
+       misma pantalla. */
     var ps = periods();
     if (ps.length < 2 && historico.length) {
       var h = serieHistorica();
@@ -3545,7 +3560,8 @@ window.APP_CONFIG = {
       if (i === -1) i = h.fechas.length - 1;
       var prevF = h.fechas[i - 1];
       if (prevF && h.puntos[product] && h.puntos[product][prevF] !== undefined) {
-        return h.puntos[product][prevF];
+        return { valor: h.puntos[product][prevF], fecha: prevF,
+                 salto: diasEntreCortes(prevF, state.period || prevF) };
       }
     }
     if (!state.period || ps.length < 2) return null;
@@ -3558,7 +3574,9 @@ window.APP_CONFIG = {
       if (state.onlyMine && !r._own) return false;
       return true;
     });
-    return avg(pricesOf(rows, product));
+    var v = avg(pricesOf(rows, product));
+    return v === null ? null
+      : { valor: v, fecha: prev, salto: diasEntreCortes(prev, state.period) };
   }
 
   function renderKpis(rows) {
@@ -3577,15 +3595,19 @@ window.APP_CONFIG = {
       var prev = previousPeriodAvg(p);
       deltaEl.className = "kpi__delta";
       if (mean !== null && prev !== null) {
-        var d = mean - prev;
+        var d = mean - prev.valor;
         // Menos de medio centavo se lee como "sin cambio", no como "▲ +0.00".
         if (Math.abs(d) < 0.005) d = 0;
         if (d > 0) deltaEl.classList.add("is-up");
         else if (d < 0) deltaEl.classList.add("is-down");
-        deltaEl.textContent = (d > 0 ? "▲ +" + d.toFixed(2) : d < 0 ? "▼ −" + Math.abs(d).toFixed(2) : "Sin cambio") +
-          " vs. periodo anterior (" + money(prev) + ")";
+        /* Se nombra el corte comparado en vez de "periodo anterior". Cuando no
+           es el dia inmediato anterior se dice cuantos dias median, para que
+           nadie lea un salto acumulado como movimiento de un dia. */
+        var ref = "vs. corte del " + fmtPeriod(prev.fecha) + " (" + money(prev.valor) + ")";
+        if (prev.salto !== null && prev.salto > 1) ref += " · " + prev.salto + " días antes";
+        deltaEl.textContent = (d > 0 ? "▲ +" + d.toFixed(2) : d < 0 ? "▼ −" + Math.abs(d).toFixed(2) : "Sin cambio") + " " + ref;
       } else {
-        deltaEl.textContent = "Sin periodo anterior para comparar";
+        deltaEl.textContent = "Sin corte anterior para comparar";
       }
 
       var ref = benchVigente(p), b = ref ? ref.valor : null;
