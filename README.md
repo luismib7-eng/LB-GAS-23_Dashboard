@@ -267,8 +267,9 @@ git add . && git commit -m "Ajustes" && git push
 ```
 
 El archivo `.nojekyll` evita que GitHub Pages procese el sitio con Jekyll.
-Los datos **no** requieren un nuevo despliegue: al cambiar la hoja de cálculo, el tablero se
-actualiza solo en la siguiente lectura.
+Los datos **no** requieren un nuevo despliegue: el flujo de Actions reescribe los CSV en el
+repositorio y el tablero los lee en la siguiente carga. No hay hoja de cálculo intermedia —la
+ingesta va del endpoint de la CNE directo al CSV versionado.
 
 ---
 
@@ -276,36 +277,58 @@ actualiza solo en la siguiente lectura.
 
 ```
 .
-├── index.html                          Estructura del tablero
-├── styles.css                          Tokens de diseño, temas claro/oscuro y componentes
-├── app.js                              Carga, normalización, KPIs, gráficos y explorador
-├── config.js                           Único archivo que necesitas editar
-├── .nojekyll
+├── index.html                  SPA completa: CSS, librerías, configuración, lógica y logotipo
+│                               embebidos en un solo archivo. No hay styles.css, app.js ni
+│                               config.js: se consolidaron aquí y el tablero abre como estático.
+├── sw.js                       Service worker. Cáscara stale-while-revalidate, datos
+│                               network-first, teselas del mapa cache-first.
+├── manifest.json               Instalación como app (PWA)
+├── .nojekyll                   Impide que Pages procese el sitio con Jekyll
 ├── README.md
-├── logo_lbgas23.png                    Logotipo del encabezado (fondo transparente)
-├── favicon.png                         Isotipo de LB GAS 23 para pestaña e ícono de app
-├── fallback.csv                        Respaldo local: padrón nacional de 13,825 estaciones
-├── catalogo_estaciones.csv             Permiso CRE → razón social y dirección (175 estaciones)
-├── xml_a_csv.py                        Convierte el XML oficial a CSV limpio y enriquecido
-├── historico.csv                       Promedios diarios por ámbito y producto (gráfica de tendencia)
-├── reporte_mercado.csv                 Métricas estilo Profeco: nacional, por marca y por región
-├── entidades_mx.geojson                Topología de las 32 entidades para deducir el estado
-├── municipios_mx.topojson              Polígonos de los 2,436 municipios para deducir el municipio
-├── AppsScript.gs                       Ingesta diaria del XML a Google Sheets
+│
+│   ── Código del ETL (entradas del flujo de Actions) ──
+├── xml_a_csv.py                Ingesta, depuración, cruce por place_id, percentiles, movimientos
+├── preparar_cliente.py         Genera clientes/<slug>/ con su recorte físico de datos
+├── preparar_subcuentas.py      Genera las subcuentas de un cliente desde su padrón
+├── historico_a_xlsx.py         Convierte historico.csv en el libro de tres hojas
+├── catalogo_estaciones.csv     Permiso CNE → place_id, razón social, municipio y coordenadas
+│                               (15,034 estaciones). Es ENTRADA del ETL, no salida.
+│
+│   ── Iconografía ──
+├── favicon.png · icono-192.png · icono-512.png · icono-512-maskable.png · apple-touch-icon.png
+│
+│   ── Salidas que el flujo escribe y versiona (NO se suben a mano) ──
+├── fallback.csv                Padrón con precios, ventana móvil de cortes diarios
+├── historico.csv               Promedios diarios por ámbito y producto. Arranca el 19 ago 2026
+│                               y es irrecuperable: la CNE no publica series históricas.
+├── movimientos.csv             Conducta por estación, acumulada desde el 1 oct 2026
+├── reporte_mercado.csv         Métricas del reporte de mercado
+├── historico.xlsx              Libro descargable del botón "Histórico"
+├── clientes/<slug>/            Instancias por cliente, con su propio recorte de datos
+│
 └── .github/
     └── workflows/
-        └── actualizar-datos.yml        Ingesta diaria automática desde GitHub Actions
+        └── actualizar-datos.yml  Corte diario 13:00 UTC (14:00 UTC los lunes)
 ```
+
+> **Los seis archivos de la última sección no se reemplazan desde un paquete de
+> entrega.** `historico.csv` y `movimientos.csv` acumulan serie que no se puede
+> reconstruir, y los otros cuatro los reescribe el flujo en cada corte. Subir una
+> copia congelada de cualquiera de ellos retrocede la serie sin que nada falle a
+> la vista: pasó el 2 de octubre de 2026 y costó diez días de histórico. Un ZIP de
+> código entrega `index.html`, `sw.js`, los `.py`, el flujo y los iconos, y deja
+> esos seis intactos en el repositorio.
 
 Todo vive en la raíz —`index.html` en el primer nivel, que es lo que GitHub Pages espera para
 servir desde `/ (root)`— salvo `.github/workflows/`, la única carpeta, y la impone GitHub para los
 flujos de Actions.
 
 El tablero interpreta CSV y XML sin dependencias adicionales: el XML se lee con `DOMParser`,
-que ya trae el navegador. Las librerías viajan en el repositorio (`leaflet.js`, `leaflet.css`,
-`papaparse.min.js`, `chart.umd.min.js`), no por CDN: PapaParse 5.4.1 (lectura de CSV), Chart.js 4.4.1 (gráficos) y Google Fonts
-(Archivo, IBM Plex Sans, IBM Plex Mono). Sin proceso de compilación: el sitio funciona abriendo
-`index.html` desde un servidor estático.
+que ya trae el navegador. Las librerías van **embebidas dentro de `index.html`**, no por CDN ni
+como archivos sueltos: Leaflet 1.9.4 (mapa en modo canvas), Chart.js 4.4.1 (gráficos) y
+PapaParse 5.4.1 (lectura de CSV). Así el service worker las precarga con la cáscara y el tablero
+abre sin red. Las tipografías son Archivo, IBM Plex Sans e IBM Plex Mono. Sin proceso de
+compilación: el sitio funciona sirviendo `index.html` desde cualquier servidor estático.
 
 > Para probarlo en tu equipo: `python3 -m http.server 8000` y abre `http://localhost:8000`.
 > Abrir el archivo con doble clic (`file://`) no funciona porque el navegador bloquea la lectura
