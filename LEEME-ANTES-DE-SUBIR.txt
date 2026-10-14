@@ -1,0 +1,38 @@
+LB GAS 23 · Monitor de Precios — paquete de codigo v11.1
+Preparado el 14 de octubre de 2026, despues de auditar el sitio en vivo
+
+QUE CAMBIO RESPECTO A v11
+  Solo dos archivos: index.html y sw.js. Los demas van identicos para que
+  reemplaces todo de una sola arrastrada, como acostumbras.
+
+  1. La tarjeta de KPI nombra el corte que compara.
+     Antes decia "vs. periodo anterior ($23.69)". Con el hueco del 2 al 13 de
+     octubre en la ventana, ese "periodo anterior" estaba a once dias y la
+     tarjeta lo presentaba como si fuera de ayer, mientras el briefing de
+     arriba declaraba correctamente el hueco. La misma pantalla daba dos
+     respuestas distintas.
+     Ahora dice: "vs. corte del 02 oct 2026 ($23.69) · 11 dias antes".
+
+  2. La nota del padron cuenta estaciones, no renglones.
+     Decia "20 sin permiso CRE en el catalogo" y "10 sucursales propias".
+     Eran 4 estaciones y 2 estaciones, multiplicadas por los 5 cortes de la
+     ventana. Es el error de etiquetado que ya habia llegado a pantalla antes
+     con las "41,549 estaciones".
+
+  El service worker subio a lbgas23-v6.
+
+COMO SE SUBE
+  Arrastra TODO el contenido de esta carpeta a la raiz del repositorio
+  luismib7-eng/LB-GAS-23_Dashboard y confirma el reemplazo.
+  Arrastra lo que esta DENTRO de la carpeta, no la carpeta.
+
+LO QUE NO TRAE, A PROPOSITO
+  fallback.csv  historico.csv  movimientos.csv  reporte_mercado.csv
+  historico.xlsx  catalogo_estaciones.csv  clientes/
+
+  Los escribe el flujo en cada corte o son entrada del ETL. No se tocan desde
+  un paquete de entrega.
+
+DESPUES DE SUBIR
+  Recarga dos veces y confirma en la tarjeta de Regular que diga
+  "vs. corte del <fecha>", no "vs. periodo anterior".
