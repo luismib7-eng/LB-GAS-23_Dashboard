@@ -815,6 +815,13 @@ html[data-theme="dark"] .brand__logo{
 .btn.is-spinning .btn__icon{display:inline-block;animation:spin .9s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ---------- Acciones del briefing ---------- */
+.briefing__acciones{
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  padding:0 18px 16px;
+}
+.briefing__copia{font-size:12px;color:var(--muted);font-weight:600}
+
 /* ---------- Controles ---------- */
 .controls{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-block:14px 16px}
 .segmented{display:inline-flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;gap:2px}
@@ -962,6 +969,9 @@ main.wrap{padding-block:22px 40px}
 .cell-addr{color:var(--muted);font-size:11.5px;line-height:1.35;margin-top:2px}
 .cell-permit{font-family:var(--font-mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
 .badge{display:inline-block;font-size:10px;padding:2px 7px;border-radius:999px;margin-left:6px;vertical-align:middle;font-weight:600;letter-spacing:.02em}
+/* El ámbito va dentro de la insignia, en menor peso: se lee sin hover —en
+   celular no hay— pero no compite con la clasificación. */
+.badge__ambito{font-weight:500;opacity:.78;letter-spacing:0}
 .badge--low{background:var(--regular-soft);color:var(--regular)}
 .badge--high{background:var(--premium-soft);color:var(--premium)}
 .badge--type{background:var(--surface-2);color:var(--muted);font-family:var(--font-mono);font-weight:500}
@@ -1000,6 +1010,15 @@ main.wrap{padding-block:22px 40px}
   .grid-2{grid-template-columns:1fr}
 }
 @media (max-width:720px){
+  /* El uso real es en celular, de pie en la estación. Por debajo de 44 px el
+     dedo falla el blanco y el usuario abandona antes de llegar al dato. */
+  .btn,.seg{min-height:44px}
+  .btn{padding-block:11px}
+  .seg{padding-block:12px}
+  .input{min-height:44px}
+  .switch-brand{min-height:44px}
+  .briefing__acciones{padding:0 14px 14px}
+  .briefing__acciones .btn{width:100%;justify-content:center}
   .wrap{width:min(1320px,100% - 24px)}
   .kpis{grid-template-columns:1fr}
   .kpis .extreme{grid-column:auto}
@@ -1552,7 +1571,7 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       <span class="brand__rule" aria-hidden="true"></span>
       <span class="brand__text">
         <span class="brand__name" id="appTitle">LB GAS 23 · Monitor de Precios</span>
-        <span class="brand__sub" id="appSubtitle">Servicio Bautista · Análisis de Precios al Público (SENER / CNE / SAT)</span>
+        <span class="brand__sub" id="appSubtitle">Servicio Bautista · Precios al público · fuente: Comisión Nacional de Energía</span>
       </span>
     </div>
 
@@ -1632,12 +1651,19 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
   <details class="panel briefing" id="briefingPanel" open>
     <summary class="briefing__summary">
       <span>
-        <span class="panel__title">Postura comercial de hoy</span>
+        <span class="panel__title">Postura comercial del último corte</span>
         <span class="panel__sub" id="briefingSub">Resumen de tus estaciones frente a su mercado local.</span>
       </span>
       <span class="sim__chevron" aria-hidden="true">▾</span>
     </summary>
     <div class="briefing__body" id="briefingBody"></div>
+    <div class="briefing__acciones" id="briefingAcciones" hidden>
+      <button class="btn btn--ghost" id="copiarPosturaBtn" type="button"
+              title="Copia el texto de la postura al portapapeles, listo para pegar en WhatsApp o correo">
+        <span class="btn__icon" aria-hidden="true">&#9109;</span> Copiar postura
+      </button>
+      <span class="briefing__copia" id="copiarPosturaAviso" role="status" aria-live="polite"></span>
+    </div>
   </details>
 
   <!-- ══════════════ TARJETAS KPI ══════════════ -->
@@ -1915,9 +1941,9 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
         <p class="panel__sub" id="profecoSub">Precios por marca y extremos en las 8 regiones de la Política de Almacenamiento.</p>
       </div>
       <div class="segmented segmented--sm" role="tablist" aria-label="Vista del reporte">
-        <button class="seg seg--regular is-active" role="tab" data-prof="marcas">Por operador</button>
-        <button class="seg seg--regular" role="tab" data-prof="regiones">Por región</button>
-        <button class="seg seg--regular" role="tab" data-prof="dinamica">Dinámica</button>
+        <button class="seg seg--regular is-active" role="tab" aria-selected="true" data-prof="marcas">Por operador</button>
+        <button class="seg seg--regular" role="tab" aria-selected="false" data-prof="regiones">Por región</button>
+        <button class="seg seg--regular" role="tab" aria-selected="false" data-prof="dinamica">Dinámica</button>
       </div>
     </div>
 
@@ -2024,8 +2050,9 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
   <div class="wrap footer__inner">
     <p class="footer__source" id="footerMethod"></p>
     <p class="footer__notes">
-      Notas: excluye zonas fronterizas con estímulo fiscal. El indicador de ganancia de las compañías
-      importadoras incluye el margen al mayoreo e incluye descuentos en TAR. Precios expresados en pesos por litro.
+      Notas: incluye la Zona Libre de la Frontera Norte, donde el IVA al 8% y los estímulos de IEPS
+      producen precios legítimamente menores. El filtro de depuración descarta registros por debajo de
+      $15.00 por litro. Precios expresados en pesos por litro, tal como los publica la CNE.
     </p>
     <p class="footer__meta">
       <a id="repoLink" href="#" rel="noopener">Repositorio del proyecto</a>
@@ -2853,8 +2880,9 @@ window.APP_CONFIG = {
 
      La TAR es el precio de venta de primera mano en la Terminal de
      Almacenamiento y Reparto. NO es el costo del gasolinero: no incluye
-     descuentos por volumen, pronto pago ni flete en autotanque, que juntos
-     mueven entre $0.30 y $0.80 por litro.
+     descuentos por volumen, pronto pago ni flete en autotanque. Esos tres
+     conceptos son privados de cada contrato y no hay fuente pública que los
+     cuantifique, así que no se publica un rango estimado en pantalla.
 
      Por eso esta capa NUNCA sustituye el costo que captura el usuario en el
      simulador. Sirve para una sola pregunta: cómo luce la estación frente al
@@ -2893,7 +2921,8 @@ window.APP_CONFIG = {
     return total ? { mapa: mapa, vigencia: vigencia, registros: total } : null;
   }
 
-  /* Margen bruto estimado contra la TAR de su entidad. Devuelve null cuando no
+  /* Diferencia contra la TAR de su entidad. No es margen: la TAR no contempla
+     descuentos ni flete. Devuelve null cuando no
      hay referencia para ese estado y producto: sin dato no se inventa nada. */
   function margenRegulatorio(r, prod) {
     if (!tarRef || r[prod] === null || !r.estado) return null;
@@ -3466,7 +3495,10 @@ window.APP_CONFIG = {
     var banda = {
       p25: quantile(v, 0.25), p50: quantile(v, 0.50),
       p75: quantile(v, 0.75), p90: quantile(v, 0.90),
-      n: v.length, etiqueta: uni.ref ? uni.ref.etiqueta : "su zona"
+      n: v.length, etiqueta: uni.ref ? uni.ref.etiqueta : "su zona",
+      /* El ámbito viaja con la banda: la insignia lo muestra cuando el radio
+         no alcanzó y la clasificación se calculó sobre un universo más amplio. */
+      alcance: uni.ref ? uni.ref.alcance : ""
     };
     bandaCache[llave] = banda;
     return banda;
@@ -3477,14 +3509,14 @@ window.APP_CONFIG = {
     var b = bandaLocal(r, prod);
     if (!b) return null;
     var p = r[prod];
-    if (p <= b.p25) return { clase: "justo", texto: "Precio justo",
+    if (p <= b.p25) return { clase: "justo", texto: "Precio justo", alcance: b.alcance,
       detalle: "Dentro del 25% más económico de " + b.etiqueta + " (" + b.n + " estaciones)." };
-    if (p >= b.p90) return { clase: "riesgo", texto: "Riesgo de exhibición",
+    if (p >= b.p90) return { clase: "riesgo", texto: "Riesgo de exhibición", alcance: b.alcance,
       detalle: "Dentro del 10% más caro de " + b.etiqueta + ". Es el rango que suele señalarse " +
                "en los comparativos públicos de precios." };
-    if (p >= b.p75) return { clase: "alto", texto: "Cuartil alto",
+    if (p >= b.p75) return { clase: "alto", texto: "Cuartil alto", alcance: b.alcance,
       detalle: "Por encima del 75% de las estaciones de " + b.etiqueta + "." };
-    return { clase: "banda", texto: "En banda",
+    return { clase: "banda", texto: "En banda", alcance: b.alcance,
       detalle: "Entre el percentil 25 y 75 de " + b.etiqueta + ": la zona media del mercado." };
   }
 
@@ -3886,6 +3918,10 @@ window.APP_CONFIG = {
       benchEl.style.left = pos(b) + "%";
       benchEl.classList.toggle("is-right", pos(b) > 76);
       benchEl.querySelector("span").textContent = "Nacional " + money(b);
+      /* La etiqueta se reescribe en cada render. init() corre antes de que
+         historico.csv llegue, así que el texto fijado al arranque describía una
+         fuente distinta de la del número que se estaba dibujando. */
+      $("railBenchChip").textContent = refRiel.etiqueta;
       $("railBenchChip").hidden = false;
     } else {
       benchEl.style.display = "none";
@@ -4164,10 +4200,15 @@ window.APP_CONFIG = {
     }
     var c = clasificar(r, prod);
     if (!c || c.clase === "banda") return marca;
+    /* En celular no hay hover: si el ámbito vive solo en el tooltip, el lector
+       asume que la clasificación se hizo contra el radio configurado. Cuando no
+       fue así, el sufijo lo dice en la etiqueta misma. */
+    var suf = (c.alcance && c.alcance !== "radio")
+      ? ' <span class="badge__ambito">· ' + esc(c.alcance) + "</span>" : "";
     return marca + ' <span class="badge badge--' + c.clase + '" data-tip ' +
       'data-tip-title="' + esc(c.texto) + '" data-tip-body="' + esc(c.detalle) +
       ' Clasificación por percentil de precio en el mercado local; no es el cálculo de margen de Profeco.">' +
-      esc(c.texto) + "</span>";
+      esc(c.texto) + suf + "</span>";
   }
 
   function renderTable(rows) {
@@ -4276,7 +4317,9 @@ window.APP_CONFIG = {
       return { valor: nac[0].promedio, etiqueta: "Promedio nacional · " + fmtPeriod(nac[0].fecha) };
     }
     var b = CFG.BENCHMARK && CFG.BENCHMARK[prod];
-    return b ? { valor: b, etiqueta: (CFG.BENCHMARK.label || "Referencia") } : null;
+    return (b && isFinite(b))
+      ? { valor: b, etiqueta: (CFG.BENCHMARK.label || "Referencia nacional") }
+      : null;
   }
 
   function render() {
@@ -4304,8 +4347,11 @@ window.APP_CONFIG = {
     renderSimulador();
     resumenFiltros();
     setTimeout(marcarScrollables, 0);
+    /* Dos fechas distintas que antes se presentaban como una: la hora en que
+       el navegador bajó el archivo y el día del corte que publicó la CNE. */
     $("footerUpdated").textContent = state.updatedAt
-      ? "Actualizado " + fmtDateTime(state.updatedAt) + " · origen: " + state.origin
+      ? "Corte " + (state.period ? fmtPeriod(state.period) : "sin fecha") +
+        " · consultado " + fmtDateTime(state.updatedAt) + " · origen: " + state.origin
       : "";
   }
 
@@ -4975,6 +5021,16 @@ window.APP_CONFIG = {
      propias, medidas contra su propio radio de competencia.
      --------------------------------------------------------- */
 
+  /* Distancia en días calendario entre dos cortes. Si el padrón tiene un hueco
+     —una corrida que no publicó— atribuir a un día el movimiento acumulado de
+     varios infla el conteo sin que nadie se entere. */
+  function diasEntreCortes(a, b) {
+    var ta = new Date(String(a) + "T12:00:00").getTime();
+    var tb = new Date(String(b) + "T12:00:00").getTime();
+    if (!isFinite(ta) || !isFinite(tb)) return null;
+    return Math.round(Math.abs(tb - ta) / 86400000);
+  }
+
   function cambiosEnRadio(rows, prod) {
     /* Cuántos competidores movieron precio contra el corte anterior. */
     var ps = periods();
@@ -4982,6 +5038,9 @@ window.APP_CONFIG = {
     var i = ps.indexOf(state.period);
     var prev = ps[i + 1];
     if (!prev) return null;
+    /* Solo se compara contra el corte del día inmediato anterior. */
+    var salto = diasEntreCortes(prev, state.period);
+    if (salto !== 1) return { movidos: null, comparables: 0, hueco: salto, previo: prev };
     var previos = {};
     state.rows.forEach(function (r) {
       if (r.fecha === prev && r[prod] !== null) previos[permitKey(r.permiso)] = r[prod];
@@ -5010,8 +5069,12 @@ window.APP_CONFIG = {
     var claves = {};
     otros.forEach(function (o) { claves[permitKey(o.permiso)] = true; });
 
-    var movieron = {}, porDia = {}, comparaciones = 0;
+    var movieron = {}, porDia = {}, comparaciones = 0, paresValidos = 0, paresSaltados = 0;
     for (var i = 1; i < fechas.length; i++) {
+      /* Un par de cortes separado por más de un día no describe conducta
+         diaria: mide el acumulado del hueco. Se descarta y se declara. */
+      if (diasEntreCortes(fechas[i - 1], fechas[i]) !== 1) { paresSaltados++; continue; }
+      paresValidos++;
       var hoy = porFecha[fechas[i]] || {}, ayer = porFecha[fechas[i - 1]] || {};
       var dia = new Date(fechas[i] + "T12:00:00").getDay();
       for (var k in claves) {
@@ -5030,7 +5093,10 @@ window.APP_CONFIG = {
     var mejorDia = null, mejorN = 0, totalMov = 0;
     for (var d in porDia) { totalMov += porDia[d]; if (porDia[d] > mejorN) { mejorN = porDia[d]; mejorDia = d; } }
     return {
-      activos: activos, totales: totales, periodos: fechas.length,
+      activos: activos, totales: totales,
+      /* "periodos" es el número de comparaciones día contra día que de verdad
+         se hicieron, no cuántas fechas hay cargadas. */
+      periodos: paresValidos, saltados: paresSaltados,
       pct: totales ? Math.round(activos / totales * 100) : 0,
       dia: mejorDia === null ? "" : dias[mejorDia],
       pctDia: totalMov ? Math.round(mejorN / totalMov * 100) : 0
@@ -5055,8 +5121,12 @@ window.APP_CONFIG = {
         '<span class="btn__icon" aria-hidden="true">★</span> Abrir Mis estaciones</button></div>';
       var cta = $("briefingCta");
       if (cta) cta.addEventListener("click", abrirGestor);
+      var accVacio = $("briefingAcciones");
+      if (accVacio) accVacio.hidden = true;
       return;
     }
+    var acc = $("briefingAcciones");
+    if (acc) acc.hidden = false;
 
     caja.innerHTML = mias.map(function (r) {
       if (r[prod] === null) {
@@ -5076,14 +5146,33 @@ window.APP_CONFIG = {
                : ref.alcance === "nacional" ? "el país" : ref.etiqueta;
 
       var cambios = cambiosEnRadio(otros, prod);
-      var frase1 = "Hoy en " + esc(zona) + ", " +
-        (cambios === null
-          ? "con " + precios.length.toLocaleString("es-MX") + " competidores en tu radio"
-          : cambios.movidos + " de " + cambios.comparables.toLocaleString("es-MX") + " competidores modificaron precio") + ".";
+      /* El corte no siempre es del día calendario en curso. Nombrar la fecha
+         evita que una decisión de precio se tome creyendo que el dato es de hoy. */
+      var sinComparar = "con " + precios.length.toLocaleString("es-MX") + " competidores en tu radio";
+      /* Sin periodo seleccionado el universo son todos los cortes cargados:
+         nombrar una fecha ahí sería inventarla. */
+      var encabeza = state.period
+        ? "En el corte del " + esc(fmtPeriod(state.period))
+        : "Con todos los cortes cargados";
+      var frase1 = encabeza + ", en " + esc(zona) + ", " +
+        (cambios === null ? sinComparar
+          : cambios.movidos === null
+            ? sinComparar + " (el corte previo es del " + esc(fmtPeriod(cambios.previo)) +
+              ", " + cambios.hueco + " días antes: no se compara movimiento diario)"
+            : cambios.movidos + " de " + cambios.comparables.toLocaleString("es-MX") +
+              " competidores modificaron precio") + ".";
 
+      /* Cuando el radio no junta estaciones suficientes, universoLocal() cae a
+         municipio, estado o nacional. Decir "promedio del radio" en ese caso es
+         una afirmación metodológica falsa dentro del mismo párrafo. */
+      var ambito = !ref ? "promedio de su mercado local"
+                 : ref.alcance === "radio"     ? "promedio de " + esc(ref.etiqueta)
+                 : ref.alcance === "municipio" ? "promedio del municipio de " + esc(ref.etiqueta)
+                 : ref.alcance === "estado"    ? "promedio de " + esc(ref.etiqueta)
+                 :                               "promedio nacional";
       var frase2 = "<strong>" + esc(r.estacion || r.permiso) + "</strong> está " +
-        (Math.abs(dif) < 0.005 ? "en el promedio del radio"
-          : "$" + Math.abs(dif).toFixed(2) + (dif > 0 ? " por encima" : " por debajo") + " del promedio del radio") +
+        (Math.abs(dif) < 0.005 ? "en el " + ambito
+          : "$" + Math.abs(dif).toFixed(2) + (dif > 0 ? " por encima del " : " por debajo del ") + ambito) +
         " (lugar " + pos + " de " + total.toLocaleString("es-MX") + ").";
 
       /* Recomendación: el ajuste mínimo para entrar al top 3 sin regalar
@@ -5110,11 +5199,18 @@ window.APP_CONFIG = {
 
       var pat = patronCompetencia(otros, prod);
       var frase4 = "";
-      if (pat && pat.periodos > 1 && pat.activos) {
+      if (pat && pat.periodos >= 1 && pat.activos) {
         frase4 = '<p class="briefing__linea briefing__linea--patron">Conducta del radio: <b>' +
-          pat.pct + "% de sus competidores</b> movió precio en los últimos " +
-          pat.periodos + " cortes" +
+          pat.pct + "% de sus competidores</b> movió precio en " +
+          pat.periodos + (pat.periodos === 1 ? " comparación" : " comparaciones") +
+          " de un día al siguiente" +
           (pat.dia ? ", y el " + pat.pctDia + "% de esos movimientos ocurrió en <b>" + pat.dia + "</b>" : "") +
+          (pat.saltados
+            ? (pat.saltados === 1
+                ? ". Se descartó 1 par de cortes no consecutivo"
+                : ". Se descartaron " + pat.saltados + " pares de cortes no consecutivos") +
+              " para no atribuir a un día el movimiento de varios"
+            : "") +
           ".</p>";
       }
 
@@ -5124,6 +5220,62 @@ window.APP_CONFIG = {
         '<p class="briefing__linea briefing__linea--accion">' + frase3 + "</p>" + frase4 +
       "</div>";
     }).join("");
+  }
+
+  /* Texto plano de la postura, armado del DOM ya pintado para que lo que se
+     pega sea exactamente lo que el usuario está leyendo. Lleva la fecha del
+     corte y la fuente: el destinatario recibe el dato con su procedencia, que
+     es el único motivo por el que sirve en una conversación de precio. */
+  function posturaTexto() {
+    var caja = $("briefingBody");
+    if (!caja) return "";
+    var partes = [];
+    caja.querySelectorAll(".briefing__item").forEach(function (it) {
+      var lineas = [];
+      it.querySelectorAll(".briefing__linea").forEach(function (p) {
+        var t = (p.textContent || "").replace(/\s+/g, " ").trim();
+        if (t) lineas.push(t);
+      });
+      if (lineas.length) partes.push(lineas.join("\n"));
+    });
+    if (!partes.length) return "";
+    var enc = "LB GAS 23 · Postura comercial\n" +
+      PRODUCTS[state.product].label + " · corte del " +
+      (state.period ? fmtPeriod(state.period) : "sin fecha");
+    var pie = "Fuente: padrón público de precios de la Comisión Nacional de Energía (CNE). " +
+      "Clasificación por percentiles del mercado local; no incluye costo por litro, " +
+      "así que no expresa margen.";
+    return enc + "\n\n" + partes.join("\n\n") + "\n\n" + pie;
+  }
+
+  function copiarPostura() {
+    var aviso = $("copiarPosturaAviso");
+    var texto = posturaTexto();
+    var decir = function (m) {
+      if (!aviso) return;
+      aviso.textContent = m;
+      setTimeout(function () { if (aviso.textContent === m) aviso.textContent = ""; }, 4000);
+    };
+    if (!texto) { decir("No hay postura que copiar en este corte."); return; }
+    var respaldo = function () {
+      /* execCommand sigue siendo la única vía en contextos sin permiso de
+         portapapeles; si también falla, se declara en lugar de fingir copia. */
+      try {
+        var ta = document.createElement("textarea");
+        ta.value = texto;
+        ta.setAttribute("readonly", "readonly");
+        ta.style.position = "fixed";
+        ta.style.top = "-1000px";
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand("copy");
+        document.body.removeChild(ta);
+        decir(ok ? "Postura copiada." : "El navegador no permitió copiar.");
+      } catch (e) { decir("El navegador no permitió copiar."); }
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(texto).then(function () { decir("Postura copiada."); }, respaldo);
+    } else { respaldo(); }
   }
 
   /* ---------------------------------------------------------
@@ -5764,14 +5916,15 @@ window.APP_CONFIG = {
         '<div class="sim__grid">' +
           tarjeta("Precio TAR de referencia", money(ref.tar),
                   ref.vigencia ? "vigencia " + esc(ref.vigencia) : "precio de venta de primera mano", "") +
-          tarjeta("Margen bruto estimado", money(margenSim) + " / L",
-                  "precio simulado menos TAR, sin flete ni descuentos", tono) +
+          tarjeta("Diferencia contra TAR", money(margenSim) + " / L",
+                  "precio simulado menos TAR; no es margen", tono) +
           tarjeta("Posición en su entidad", lectura,
                   pares.length + " estaciones comparadas", tono) +
         "</div>" +
         '<p class="fin__nota"><b>Esto no es su margen.</b> La TAR es el precio de salida en terminal: ' +
-        "no incluye su descuento por volumen, pronto pago ni el flete en autotanque, que juntos suelen " +
-        "mover entre $0.30 y $0.80 por litro. Sirve para una sola cosa: ver cómo luce su estación frente " +
+        "no incluye su descuento por volumen, pronto pago ni el flete en autotanque. Esos tres conceptos " +
+        "son privados de cada contrato de suministro y este tablero no los conoce, así que la cifra de " +
+        "arriba no es su margen. Sirve para una sola cosa: ver cómo luce su estación frente " +
         "al indicador con que se construyen los comparativos públicos de margen. Para su utilidad real, " +
         "capture su costo por litro arriba.</p>" +
       "</div>";
@@ -5870,7 +6023,7 @@ window.APP_CONFIG = {
       }
       if (costo === null) {
         html += '<p class="fin__nota">Sin costo por litro, esto es <strong>ingreso</strong>, no utilidad. ' +
-                "Captura tu costo en TAR más flete para ver el margen bruto y el punto de equilibrio.</p>";
+                "Captura tu costo por litro —TAR más flete, menos tus descuentos— para ver el margen y el punto de equilibrio.</p>";
       }
       return html + "</div>";
     }
@@ -6059,6 +6212,8 @@ window.APP_CONFIG = {
     });
 
     $("exportBtn").addEventListener("click", exportarCsv);
+    var cpBtn = $("copiarPosturaBtn");
+    if (cpBtn) cpBtn.addEventListener("click", copiarPostura);
 
     $("filtersBtn").addEventListener("click", function () { alternarFiltros(); });
 
@@ -6116,7 +6271,11 @@ window.APP_CONFIG = {
 
     document.querySelectorAll("[data-prof]").forEach(function (b) {
       b.addEventListener("click", function () {
-        document.querySelectorAll("[data-prof]").forEach(function (o) { o.classList.remove("is-active"); });
+        document.querySelectorAll("[data-prof]").forEach(function (o) {
+          o.classList.remove("is-active");
+          o.setAttribute("aria-selected", "false");
+        });
+        b.setAttribute("aria-selected", "true");
         b.classList.add("is-active");
         profVista = b.getAttribute("data-prof");
         $("profMarcas").hidden = profVista !== "marcas";
@@ -6299,8 +6458,6 @@ window.APP_CONFIG = {
     if (CFG.SUBTITLE) $("appSubtitle").textContent = CFG.SUBTITLE;
     $("footerMethod").textContent = CFG.METODOLOGIA || "";
     if (CFG.REPO_URL) $("repoLink").href = CFG.REPO_URL;
-    var refChip = benchVigente(state.product);
-    if (refChip) $("railBenchChip").textContent = refChip.etiqueta;
 
     try {
       var saved = localStorage.getItem(THEME_KEY);
