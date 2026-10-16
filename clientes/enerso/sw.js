@@ -20,7 +20,7 @@
    borra al activar y a las pestañas abiertas les llega el aviso.
    ============================================================= */
 
-var VERSION = "lbgas23-v6";
+var VERSION = "lbgas23-v8";
 var CACHE_SHELL = VERSION + "-cascaron";
 var CACHE_DATOS = VERSION + "-datos";
 var CACHE_MAPA = VERSION + "-mapa";
