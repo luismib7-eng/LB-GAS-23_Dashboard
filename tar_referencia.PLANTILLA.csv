@@ -1,0 +1,7 @@
+Estado,Producto,Precio_TAR,Vigencia
+# Plantilla. NO contiene precios reales: los tres renglones de abajo son el formato.
+# Precio_TAR = COSTO PUESTO EN ESTACION: terminal + flete - descuentos, con impuestos de factura.
+# Vigencia = AAAA-MM-DD. Pasados 30 dias el tablero bloquea la proyeccion.
+Jalisco,Regular,,2026-10-16
+Jalisco,Premium,,2026-10-16
+Jalisco,Diesel,,2026-10-16

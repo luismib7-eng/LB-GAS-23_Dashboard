@@ -1,38 +1,83 @@
-LB GAS 23 · Monitor de Precios — paquete de codigo v11.1
-Preparado el 14 de octubre de 2026, despues de auditar el sitio en vivo
+LB GAS 23 · Monitor de Precios — v13 produccion
+16 de octubre de 2026
 
-QUE CAMBIO RESPECTO A v11
-  Solo dos archivos: index.html y sw.js. Los demas van identicos para que
-  reemplaces todo de una sola arrastrada, como acostumbras.
 
-  1. La tarjeta de KPI nombra el corte que compara.
-     Antes decia "vs. periodo anterior ($23.69)". Con el hueco del 2 al 13 de
-     octubre en la ventana, ese "periodo anterior" estaba a once dias y la
-     tarjeta lo presentaba como si fuera de ayer, mientras el briefing de
-     arriba declaraba correctamente el hueco. La misma pantalla daba dos
-     respuestas distintas.
-     Ahora dice: "vs. corte del 02 oct 2026 ($23.69) · 11 dias antes".
+TRES COSAS DE LA ORDEN QUE NO SE EJECUTARON, Y POR QUE
+======================================================
 
-  2. La nota del padron cuenta estaciones, no renglones.
-     Decia "20 sin permiso CRE en el catalogo" y "10 sucursales propias".
-     Eran 4 estaciones y 2 estaciones, multiplicadas por los 5 cortes de la
-     ventana. Es el error de etiquetado que ya habia llegado a pantalla antes
-     con las "41,549 estaciones".
+1. EL SERVICE WORKER NO BAJA A v4. SUBE A v8.
+   La orden pedia "lbgas23-v4" para invalidar la cache de clientes en v3.
+   Verifique produccion: hoy esta en v6, y el paquete anterior la dejo en v7.
+   Poner v4 seria RETROCEDER, y los navegadores que ya tienen v6 o v7 no
+   verian v4 como version nueva: la cache no se invalidaria y el boton de
+   actualizar no aparece. La v3 que menciona la orden es la del ZIP v9, de
+   hace varias entregas.
 
-  El service worker subio a lbgas23-v6.
+2. LOS CSV ACUMULATIVOS NO VAN EN EL ZIP.
+   La orden pedia incluir fallback.csv, catalogo_estaciones.csv e
+   historico.csv en la raiz. Eso es exactamente lo que destruyo diez dias de
+   serie el 2 de octubre. El flujo de Actions los reescribe en cada corte
+   (linea 206 del workflow: git add fallback.csv historico.csv movimientos.csv
+   reporte_mercado.csv historico.xlsx clientes/). Subir copias congeladas los
+   retrocede sin que nada marque error.
+
+3. LA CARPETA clientes/ TAMPOCO VA.
+   Misma razon: el flujo la regenera y la versiona en cada corrida con
+   preparar_cliente.py y preparar_subcuentas.py. Mandar copias viejas de
+   ENERSO, Leon, Morelia y Tepatitlan sobrescribe las recien generadas.
+   La sincronia que pide la orden ya la garantiza el flujo, no el ZIP.
+
+La raiz plana SI se respeto. Este paquete no tiene carpeta v2/ ni ninguna
+otra envolvente: lo de adentro va directo a la raiz del repositorio.
+
+
+LO QUE SI TRAE DE NUEVO
+=======================
+
+A. UN DEFECTO QUE LLEVABA MESES OCULTO
+   cargarTar() nunca funciono. parseCsv() devuelve { rows, fields }, pero la
+   funcion lo trataba como arreglo y leia filas.length sobre el objeto, que es
+   undefined. Salia por null en la primera linea, SIEMPRE. La capa de costo
+   jamas llego a construirse ni una vez desde que se escribio.
+   Nadie lo noto porque TAR_CSV estaba vacio y la funcion nunca se invocaba
+   con datos. Corregido.
+
+B. COSTO POR INSTANCIA, CON VIGENCIA
+   TAR_CSV se configura por cliente. Columnas: Estado, Producto, Precio_TAR,
+   Vigencia.
+   - Si la vigencia tiene mas de 30 dias, el tablero AVISA y BLOQUEA la
+     proyeccion en vez de calcular sobre un costo viejo.
+   - Si el archivo no trae fecha legible, tampoco se da por vigente: se
+     bloquea igual. No se asume vigencia de algo que no se pudo fechar.
+   - El limite se ajusta con TAR_VIGENCIA_DIAS en la configuracion.
+
+C. TERMINOLOGIA CORREGIDA
+   Ya no dice "Precio TAR de referencia" ni "Diferencia contra TAR".
+   Ahora dice COSTO PUESTO EN ESTACION, y la nota explica que debe contener:
+   terminal + flete - descuentos, con los impuestos que ya vienen en factura.
+   Solo asi el diferencial contra el precio al publico es margen bruto real.
+
+   NO se puso el rango "$1.50 - $3.20/L" que traia la orden: no tiene fuente.
+   El tablero no afirma cuanto deberia ser el margen de nadie.
+
+D. tar_referencia.PLANTILLA.csv
+   Plantilla VACIA con el formato y las instrucciones en comentarios. No trae
+   precios: los pone el cliente con su contrato. Renombrala a
+   tar_referencia.csv dentro de la instancia del cliente y apunta su TAR_CSV
+   ahi.
+
 
 COMO SE SUBE
-  Arrastra TODO el contenido de esta carpeta a la raiz del repositorio
-  luismib7-eng/LB-GAS-23_Dashboard y confirma el reemplazo.
-  Arrastra lo que esta DENTRO de la carpeta, no la carpeta.
+============
+Arrastra TODO el contenido de esta carpeta a la raiz del repositorio.
+Lo de ADENTRO, no la carpeta.
 
-LO QUE NO TRAE, A PROPOSITO
-  fallback.csv  historico.csv  movimientos.csv  reporte_mercado.csv
-  historico.xlsx  catalogo_estaciones.csv  clientes/
+Service worker en lbgas23-v8: recarga DOS veces despues de subir.
 
-  Los escribe el flujo en cada corte o son entrada del ETL. No se tocan desde
-  un paquete de entrega.
 
-DESPUES DE SUBIR
-  Recarga dos veces y confirma en la tarjeta de Regular que diga
-  "vs. corte del <fecha>", no "vs. periodo anterior".
+COMO SE ACTIVA EL COSTO DE UN CLIENTE
+=====================================
+1. Copia tar_referencia.PLANTILLA.csv a clientes/<cliente>/tar_referencia.csv
+2. Llenalo con el costo puesto en estacion que te de el cliente y la fecha.
+3. En el config.js de esa instancia pon:  TAR_CSV: "tar_referencia.csv"
+4. La instancia matriz se queda con TAR_CSV vacio: no hay un costo nacional.

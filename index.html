@@ -972,6 +972,14 @@ main.wrap{padding-block:22px 40px}
 /* El ámbito va dentro de la insignia, en menor peso: se lee sin hover —en
    celular no hay— pero no compite con la clasificación. */
 .badge__ambito{font-weight:500;opacity:.78;letter-spacing:0}
+/* Nombre comercial del DENUE: el que se reconoce en la calle. Pesa más que
+   el domicilio pero menos que la razón social, que sigue siendo la identidad
+   del permiso. */
+.cell-addr--fuerte{color:var(--text);font-weight:600;opacity:.92}
+/* Costo vencido: el bloque se marca en ámbar y pierde la rejilla de tarjetas,
+   para que se lea como advertencia y no como un resultado más. */
+.fin--vencido{border-left:3px solid var(--premium,#D8A64A)}
+.fin--vencido .fin__titulo{color:var(--premium,#D8A64A)}
 .badge--low{background:var(--regular-soft);color:var(--regular)}
 .badge--high{background:var(--premium-soft);color:var(--premium)}
 .badge--type{background:var(--surface-2);color:var(--muted);font-family:var(--font-mono);font-weight:500}
@@ -2208,6 +2216,15 @@ window.APP_CONFIG = {
   XML_URL: "",
   FALLBACK_CSV: "fallback.csv",
   CATALOG_CSV: "catalogo_estaciones.csv",
+
+  /* Enriquecimiento del DENUE del INEGI (clase SCIAN 468411), cruzado contra
+     el padrón por cercanía geográfica a menos de 150 metros.
+     Aporta dos cosas que la CNE no publica: el NOMBRE COMERCIAL con que se
+     conoce la estación —la CNE publica al titular del permiso, que muchas
+     veces es una persona física— y la DIRECCIÓN DE CALLE, que en el padrón
+     de precios viene vacía.
+     Si el archivo no existe, el tablero funciona exactamente como antes. */
+  DENUE_CSV: "denue.csv",
   HISTORY_CSV: "historico.csv",
 
   /* ---------- Comportamiento ---------- */
@@ -2240,7 +2257,17 @@ window.APP_CONFIG = {
   /* Tarifa de Almacenamiento y Reparto. El ETL no la genera, así que queda
      vacía: con la cadena vacía la guarda de load() ni siquiera dispara el
      fetch. Si algún día se publica el archivo, basta volver a nombrarlo. */
+  /* Costo puesto en estación, POR CLIENTE. No es un dato público: lo
+     proporciona el propio cliente con su contrato de suministro, porque es el
+     único que conoce su descuento negociado y su flete.
+     Columnas: Estado, Producto, Precio_TAR, Vigencia.
+     Vacío en la instancia matriz: cada cliente carga el suyo. */
   TAR_CSV: "",
+
+  /* Días que un costo capturado se considera vigente. Pasados estos, el
+     tablero avisa y bloquea la proyección de utilidad en vez de calcular
+     sobre un costo viejo, que es peor que no calcular nada. */
+  TAR_VIGENCIA_DIAS: 30,
 
   /* Tope de estaciones propias según el plan contratado:
      1 (Plan Estación) · 5 (Plan Red) · 15 (Plan Grupo). */
@@ -2784,7 +2811,9 @@ window.APP_CONFIG = {
     }
     // No se reinicia la marca: indexRow vuelve a correr tras cruzar el catálogo.
     if (r.inferido === undefined) r.inferido = false;
-    r._s = slug([r.estacion, r.permiso, permitKey(r.permiso), r.direccion,
+    /* El buscador también encuentra por el nombre comercial: el usuario
+       escribe el nombre que ve en la calle, no la razón social del permiso. */
+    r._s = slug([r.estacion, r.comercial, r.permiso, permitKey(r.permiso), r.direccion,
                  r.municipio, r.estado, r.region, r.marca].join(" "));
     r._own = esPropia(r);
     r._marca = detectaMarca(r);
@@ -2919,7 +2948,11 @@ window.APP_CONFIG = {
   var tarRef = null;   // { estado: { Regular: precio, ... } }, null si no hay archivo
 
   function cargarTar(texto) {
-    var filas = parseCsv(texto);
+    /* parseCsv devuelve { rows, fields }, no un arreglo. Esta función leía
+       `filas.length` sobre el objeto —siempre undefined— y salía por null en
+       la primera línea, así que la capa de costo nunca llegó a construirse ni
+       una sola vez desde que se escribió. */
+    var filas = (parseCsv(texto) || {}).rows || [];
     if (!filas.length) return null;
     var mapa = {}, vigencia = "", total = 0;
     var valor = function (f, nombres) {
@@ -2937,7 +2970,10 @@ window.APP_CONFIG = {
       var precio = toNumber(valor(f, ["preciotar", "tar", "precio"]));
       if (precio !== null && (precio < 5 || precio > 60)) precio = null;
       var v = String(valor(f, ["vigencia", "fecha"]) || "").trim();
-      if (v && !vigencia) vigencia = v;
+      /* Se conserva la vigencia MÁS RECIENTE del archivo, no la primera: un
+         archivo con varias fechas describe su última actualización por la más
+         nueva, y es contra ésa que se mide la antigüedad. */
+      if (v && (!vigencia || v > vigencia)) vigencia = v;
       var col = prod.indexOf("regular") > -1 ? "Regular"
               : prod.indexOf("premium") > -1 ? "Premium"
               : prod.indexOf("diesel") > -1 || prod.indexOf("diésel") > -1 ? "Diesel" : "";
@@ -2945,7 +2981,34 @@ window.APP_CONFIG = {
       (mapa[estado] = mapa[estado] || {})[col] = precio;
       total++;
     });
-    return total ? { mapa: mapa, vigencia: vigencia, registros: total } : null;
+    if (!total) return null;
+    var edad = diasDesde(vigencia);
+    var tope = Number(CFG.TAR_VIGENCIA_DIAS);
+    if (!isFinite(tope) || tope <= 0) tope = 30;
+    return {
+      mapa: mapa, vigencia: vigencia, registros: total,
+      edadDias: edad,
+      /* Vencido cuando se puede fechar y supera el tope. Un archivo SIN fecha
+         legible no se da por bueno: tampoco se puede afirmar que esté vigente. */
+      vencido: (edad === null) || (edad > tope),
+      sinFecha: edad === null,
+      topeDias: tope
+    };
+  }
+
+  /* Días transcurridos desde una fecha en texto. Devuelve null si no se puede
+     leer: no se asume vigencia de algo que no se pudo fechar. */
+  function diasDesde(txt) {
+    var m = String(txt || "").match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) {
+      m = String(txt || "").match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+      if (!m) return null;
+      m = [null, m[3], m[2], m[1]];
+    }
+    var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0);
+    if (!isFinite(d.getTime())) return null;
+    var hoy = new Date();
+    return Math.floor((hoy - d) / 86400000);
   }
 
   /* Diferencia contra la TAR de su entidad. No es margen: la TAR no contempla
@@ -2958,7 +3021,11 @@ window.APP_CONFIG = {
     var col = PRODUCTS[prod].label === "Diésel" ? "Diesel" : PRODUCTS[prod].label;
     var tar = fila[col];
     if (tar === undefined || tar === null) return null;
-    return { tar: tar, margen: r[prod] - tar, vigencia: tarRef.vigencia };
+    return {
+      tar: tar, margen: r[prod] - tar, vigencia: tarRef.vigencia,
+      edadDias: tarRef.edadDias, vencido: tarRef.vencido,
+      sinFecha: tarRef.sinFecha, topeDias: tarRef.topeDias
+    };
   }
 
   var sirvioCache = false;
@@ -3040,8 +3107,16 @@ window.APP_CONFIG = {
     var catalogo = catUrl ? fetchText(catUrl).then(buildCatalogSafe, function () { return null; })
                           : Promise.resolve(null);
 
+    /* El DENUE se baja una sola vez y no caduca al ritmo de los precios, así
+       que su fallo nunca debe tumbar la carga: si no llega, el tablero sigue
+       mostrando la razón social como siempre. */
+    var denUrl = CFG.DENUE_CSV && CFG.DENUE_CSV.trim();
+    var denue = denUrl ? fetchText(denUrl).then(buildDenueSafe, function () { return null; })
+                       : Promise.resolve(null);
+
     sirvioCache = false;
-    catalogo
+    Promise.all([catalogo, denue])
+      .then(function (par) { denueIdx = par[1]; return par[0]; })
       .then(function (cat) { return intentar(fuentes, 0, cat, []); })
       .then(function (res) {
         quality = res.quality;
@@ -3098,6 +3173,7 @@ window.APP_CONFIG = {
         var rows = parseSource(text, src.kind);
         if (!rows.length) throw new Error("Sin estaciones con precio.");
         applyCatalog(rows, catalogo);
+        applyDenue(rows);
         return { rows: rows, src: src, quality: quality };
       })
       .catch(function (e) {
@@ -3108,6 +3184,70 @@ window.APP_CONFIG = {
 
   function buildCatalogSafe(text) {
     try { return buildCatalog(text); } catch (e) { return null; }
+  }
+
+  /* ---------------------------------------------------------
+     Enriquecimiento del DENUE
+
+     NO es una columna de marca. Se midió: solo el 11.7% de los nombres del
+     DENUE contienen una bandera reconocible (Oxxo Gas, Petro-7, Pemex…), muy
+     por debajo de lo necesario para agrupar por bandera. La agrupación válida
+     sigue siendo por razón social. Lo que sí aporta es identidad legible y
+     domicilio.
+     --------------------------------------------------------- */
+
+  var denueIdx = null;
+  var denueAplicados = 0;
+
+  function buildDenue(text) {
+    var parsed = parseCsv(text);
+    if (!parsed || !parsed.rows || !parsed.rows.length) return null;
+    var campo = {};
+    (parsed.fields || []).forEach(function (f) { campo[normText(f)] = f; });
+    var cPer = campo[normText("Permiso CRE")] || campo["permiso"];
+    var cNom = campo[normText("Nombre comercial")];
+    var cDir = campo[normText("Direccion")] || campo[normText("Dirección")];
+    var cCp  = campo[normText("CP")];
+    if (!cPer) return null;
+    var idx = {};
+    parsed.rows.forEach(function (r) {
+      var k = permitKey(r[cPer]);
+      if (!k) return;
+      idx[k] = {
+        comercial: cNom ? String(r[cNom] || "").trim() : "",
+        direccion: cDir ? String(r[cDir] || "").trim() : "",
+        cp: cCp ? String(r[cCp] || "").trim() : ""
+      };
+    });
+    return idx;
+  }
+
+  function buildDenueSafe(text) {
+    try { return buildDenue(text); } catch (e) { return null; }
+  }
+
+  function applyDenue(rows) {
+    denueAplicados = 0;
+    if (!denueIdx || !rows) return rows;
+    rows.forEach(function (r) {
+      var d = denueIdx[permitKey(r.permiso)];
+      if (!d) return;
+      if (d.comercial) r.comercial = d.comercial;
+      /* El padrón de precios trae Direccion vacía; el catálogo rara vez la
+         completa. Solo se escribe si sigue vacía, nunca se pisa un dato
+         que ya venía de la fuente oficial. */
+      if (!r.direccion && d.direccion) r.direccion = d.direccion;
+      if (d.cp) r.cp = d.cp;
+      if (r.comercial) denueAplicados++;
+      indexRow(r);
+    });
+    return rows;
+  }
+
+  /* Nombre con el que se reconoce la estación en la calle. Cuando el DENUE no
+     la cruzó, se cae a la razón social, que es lo que había antes. */
+  function nombreVisible(r) {
+    return (r && r.comercial) || (r && r.estacion) || (r && r.permiso) || "";
   }
 
   /* El padrón nacional supera las 13,800 estaciones: guardarlo completo en
@@ -3289,6 +3429,15 @@ window.APP_CONFIG = {
     var artificiales = Object.keys(clavesArtificiales).length;
     if (artificiales) nota.push(artificiales + " estacion" + (artificiales > 1 ? "es" : "") +
                                 " sin permiso CRE en el catálogo");
+    /* La cobertura del DENUE se declara: 3 de cada 4 estaciones ganan nombre
+       comercial, y el usuario tiene que saber cuáles son las que no. */
+    if (denueAplicados) {
+      var clavesDenue = {};
+      state.rows.forEach(function (r) { if (r.comercial) clavesDenue[permitKey(r.permiso)] = true; });
+      var nDenue = Object.keys(clavesDenue).length;
+      nota.push(nDenue.toLocaleString("es-MX") + " con nombre comercial del DENUE" +
+                (unicas ? " (" + Math.round(100 * nDenue / unicas) + "%)" : ""));
+    }
     if (quality.duplicados) nota.push(quality.duplicados + " permisos repetidos fusionados");
     if (quality.fueraRango) nota.push(quality.fueraRango + " precios fuera de rango descartados");
     $("datasetNote").textContent = nota.join(" · ");
@@ -4277,7 +4426,11 @@ window.APP_CONFIG = {
         '<td><div class="cell-station">' + esc(r.estacion || r.permiso) +
           (r._own ? '<span class="badge badge--own">Sucursal propia</span>' : "") +
           insignia(r, p) + "</div>" +
-          (r.marca ? '<div class="cell-addr">' + esc(r.marca) + "</div>" : "") + "</td>" +
+          /* La razón social identifica al permisionario y es el eje de
+             análisis; el nombre comercial va debajo porque es el que el
+             usuario reconoce al pasar por enfrente. */
+          (r.comercial && r.comercial !== r.estacion
+            ? '<div class="cell-addr">' + esc(r.comercial) + "</div>" : "") + "</td>" +
         '<td><span class="cell-permit">' + (esc(r.permiso) || "—") + "</span></td>" +
         "<td>" + (r.inferido ? '<span class="inferido" data-tip data-tip-title="Ubicación inferida" data-tip-body="Deducida del domicilio, no del catálogo. Captura Estado y Municipio en catalogo_estaciones.csv para tenerla confirmada.">≈</span> ' : "") +
           esc([r.municipio, r.estado, r.region].filter(Boolean).join(", ") || "—") +
@@ -4944,10 +5097,15 @@ window.APP_CONFIG = {
       return '<div class="pop__fila"><span>' + etiqueta + "</span><b>" + valor + "</b></div>";
     };
     return '<div class="pop">' +
-      '<p class="pop__nombre">' + esc(r.estacion || r.permiso) + (r._own ? " ★" : "") + "</p>" +
-      '<p class="pop__meta">' + esc(r.permiso) +
-        (r.marca || r._marca ? " · " + esc(r.marca || r._marca) : "") +
+      /* Sobre el mapa importa reconocer cuál es, no quién la tiene a su
+         nombre: el nombre comercial manda y la razón social queda debajo. */
+      '<p class="pop__nombre">' + esc(nombreVisible(r)) + (r._own ? " ★" : "") + "</p>" +
+      '<p class="pop__meta">' +
+        (r.comercial && r.estacion && r.comercial !== r.estacion
+          ? esc(r.estacion) + "<br>" : "") +
+        esc(r.permiso) +
         ([r.municipio, r.estado].filter(Boolean).length ? "<br>" + esc([r.municipio, r.estado].filter(Boolean).join(", ")) : "") +
+        (r.direccion ? "<br>" + esc(r.direccion) : "") +
       "</p>" +
       linea("Regular", r.regular === null ? "N/D" : money(r.regular)) +
       linea("Premium", r.premium === null ? "N/D" : money(r.premium)) +
@@ -5702,7 +5860,13 @@ window.APP_CONFIG = {
         "<tr><td><div class=\"cell-station\">" + esc(x.row.estacion || x.row.permiso) +
           (x.row._own ? '<span class="badge badge--own">Sucursal propia</span>' : "") +
           insignia(x.row, v.prod) + "</div>" +
-          '<div class="cell-addr">' + esc([x.row.municipio, x.row.estado].filter(Boolean).join(", ") || "—") + "</div></td>" +
+          /* Frente a un competidor, el nombre de calle y el domicilio son lo
+             que permite saber de cuál se está hablando sin abrir el mapa. */
+          (x.row.comercial && x.row.comercial !== x.row.estacion
+            ? '<div class="cell-addr cell-addr--fuerte">' + esc(x.row.comercial) + "</div>" : "") +
+          '<div class="cell-addr">' +
+            esc(x.row.direccion || [x.row.municipio, x.row.estado].filter(Boolean).join(", ") || "—") +
+          "</div></td>" +
         '<td><span class="cell-permit">' + (esc(x.row.permiso) || "—") + "</span></td>" +
         '<td class="is-num vec__dist">' + x.km.toFixed(2) + " km</td>" +
         '<td class="is-num">' + money(x.precio) + "</td>" +
@@ -5733,14 +5897,15 @@ window.APP_CONFIG = {
     var etiqueta = PRODUCTS[v.prod].label;
     var lineas = [[
       "Referencia", "Permiso referencia", "Producto", "Radio km", "Corte",
-      "Competidor", "Permiso CRE", "Municipio", "Estado",
+      "Competidor", "Nombre comercial", "Permiso CRE", "Municipio", "Estado", "Direccion",
       "Distancia km", "Precio", "Diferencia vs referencia", "Posicion"
     ].map(csvCampo).join(",")];
 
     v.lista.forEach(function (x) {
       lineas.push([
         v.ref.estacion || v.ref.permiso, v.ref.permiso, etiqueta, radio, state.period || "",
-        x.row.estacion || x.row.permiso, x.row.permiso, x.row.municipio || "", x.row.estado || "",
+        x.row.estacion || x.row.permiso, x.row.comercial || "", x.row.permiso,
+        x.row.municipio || "", x.row.estado || "", x.row.direccion || "",
         x.km.toFixed(3), x.precio.toFixed(2), x.delta.toFixed(2),
         x.delta < -0.005 ? "Mas barato que la referencia"
           : x.delta > 0.005 ? "Mas caro que la referencia" : "Mismo precio"
@@ -5942,6 +6107,29 @@ window.APP_CONFIG = {
       var ref = margenRegulatorio(r, state.product);
       if (!ref) return "";
 
+      /* Costo vencido: se declara y NO se proyecta. Un costo de hace meses
+         produce un diferencial con apariencia de precisión y cero validez;
+         mostrarlo es peor que no mostrar nada, porque se decide con él. */
+      if (ref.vencido) {
+        return '<div class="fin fin--reg fin--vencido">' +
+          '<p class="fin__titulo">Costo puesto en estación · sin vigencia</p>' +
+          '<p class="fin__nota">' +
+            (ref.sinFecha
+              ? "El archivo de costo cargado en esta instancia no trae una fecha de vigencia legible, " +
+                "así que no se puede afirmar que siga vigente."
+              : "El costo cargado en esta instancia tiene <b>" + ref.edadDias + " días</b> " +
+                "(vigencia declarada: " + esc(ref.vigencia) + ") y el límite configurado es de " +
+                ref.topeDias + ".") +
+            " La proyección de diferencial queda bloqueada a propósito: el precio en terminal, el flete " +
+            "y los descuentos por volumen se renegocian, y calcular sobre un costo viejo da una cifra " +
+            "precisa y equivocada." +
+          "</p>" +
+          '<p class="fin__nota"><b>Qué hacer.</b> Actualice el archivo de costo de su instancia con la ' +
+          "vigencia del mes en curso, o capture su costo por litro arriba para que el simulador calcule " +
+          "con el dato de hoy.</p>" +
+        "</div>";
+      }
+
       // Distribución de márgenes estimados en la misma entidad, para situarlo.
       var pares = periodRows().filter(function (x) {
         return x.estado === r.estado && x[state.product] !== null;
@@ -5961,21 +6149,25 @@ window.APP_CONFIG = {
       }
 
       return '<div class="fin fin--reg">' +
-        '<p class="fin__titulo">Indicador regulatorio de referencia</p>' +
+        '<p class="fin__titulo">Costo puesto en estación · referencia de su contrato</p>' +
         '<div class="sim__grid">' +
-          tarjeta("Precio TAR de referencia", money(ref.tar),
-                  ref.vigencia ? "vigencia " + esc(ref.vigencia) : "precio de venta de primera mano", "") +
-          tarjeta("Diferencia contra TAR", money(margenSim) + " / L",
-                  "precio simulado menos TAR; no es margen", tono) +
+          tarjeta("Costo puesto en estación", money(ref.tar),
+                  ref.vigencia
+                    ? "vigencia " + esc(ref.vigencia) +
+                      (ref.edadDias !== null ? " · " + ref.edadDias + " días" : "")
+                    : "según el archivo de su instancia", "") +
+          tarjeta("Margen bruto por litro", money(margenSim) + " / L",
+                  "precio simulado menos su costo puesto en estación", tono) +
           tarjeta("Posición en su entidad", lectura,
                   pares.length + " estaciones comparadas", tono) +
         "</div>" +
-        '<p class="fin__nota"><b>Esto no es su margen.</b> La TAR es el precio de salida en terminal: ' +
-        "no incluye su descuento por volumen, pronto pago ni el flete en autotanque. Esos tres conceptos " +
-        "son privados de cada contrato de suministro y este tablero no los conoce, así que la cifra de " +
-        "arriba no es su margen. Sirve para una sola cosa: ver cómo luce su estación frente " +
-        "al indicador con que se construyen los comparativos públicos de margen. Para su utilidad real, " +
-        "capture su costo por litro arriba.</p>" +
+        '<p class="fin__nota"><b>Qué debe contener este costo.</b> El archivo de su instancia debe traer el ' +
+        "<b>costo puesto en estación</b>: precio en terminal más flete, menos sus descuentos por volumen y " +
+        "pronto pago, y con los impuestos que ya le vienen cargados en la factura. Solo así el diferencial " +
+        "contra su precio al público es margen bruto real.</p>" +
+        '<p class="fin__nota">Ese dato no es público y este tablero no lo deduce: lo proporciona usted, ' +
+        "porque es el único que conoce su contrato de suministro. Si lo que cargó es el precio de lista en " +
+        "terminal sin flete ni descuentos, la cifra de arriba será mayor que su margen real.</p>" +
       "</div>";
     }
 
