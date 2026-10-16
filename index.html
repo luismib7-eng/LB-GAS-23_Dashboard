@@ -3198,6 +3198,28 @@ window.APP_CONFIG = {
 
   var denueIdx = null;
   var denueAplicados = 0;
+  var denueDescartados = 0;
+
+  /* El DENUE cuelga de algunos permisos de estación registros que NO son la
+     estación: "OFICINAS ADMINSTRATIVA", corporativos, inmobiliarias, bodegas.
+     Si uno se cuela, el tablero le pone a una gasolinera el nombre y el
+     domicilio de una oficina, y el cliente lo ve en la tabla. Son 52 de 10,585
+     (0.49%) en el padrón del 16 de octubre de 2026.
+
+     Se descarta el registro completo, no solo el nombre: el domicilio de esos
+     registros es el de la oficina, no el de la estación.
+
+     La segunda condición evita falsos positivos: "OFICINA DE GASOLINERA" o
+     "CORPORATIVO GASOLINERO DEL CARIBE" sí nombran una estación. */
+  var DENUE_NO_ES_ESTACION = /OFICIN|ADMINSTRATIV|ADMINISTRATIV|CORPORATIV|INMOBILIARI|\bBODEGA|ALMACEN/i;
+  var DENUE_SI_ES_ESTACION = /GASOLINER|ESTACI[OÓ]N|SERVICIO|COMBUSTIBLE|GASOLINA/i;
+
+  function denueEsEstacion(nombre) {
+    var n = String(nombre || "");
+    if (!n) return true;
+    if (!DENUE_NO_ES_ESTACION.test(n)) return true;
+    return DENUE_SI_ES_ESTACION.test(n);
+  }
 
   function buildDenue(text) {
     var parsed = parseCsv(text);
@@ -3210,11 +3232,14 @@ window.APP_CONFIG = {
     var cCp  = campo[normText("CP")];
     if (!cPer) return null;
     var idx = {};
+    denueDescartados = 0;
     parsed.rows.forEach(function (r) {
       var k = permitKey(r[cPer]);
       if (!k) return;
+      var nom = cNom ? String(r[cNom] || "").trim() : "";
+      if (!denueEsEstacion(nom)) { denueDescartados++; return; }
       idx[k] = {
-        comercial: cNom ? String(r[cNom] || "").trim() : "",
+        comercial: nom,
         direccion: cDir ? String(r[cDir] || "").trim() : "",
         cp: cCp ? String(r[cCp] || "").trim() : ""
       };
@@ -3437,6 +3462,12 @@ window.APP_CONFIG = {
       var nDenue = Object.keys(clavesDenue).length;
       nota.push(nDenue.toLocaleString("es-MX") + " con nombre comercial del DENUE" +
                 (unicas ? " (" + Math.round(100 * nDenue / unicas) + "%)" : ""));
+      /* Se declara lo que se tiró, para que el conteo de arriba sea auditable
+         y no parezca que el DENUE trae menos de lo que trae. */
+      if (denueDescartados) {
+        nota.push(denueDescartados.toLocaleString("es-MX") +
+                  " registros del DENUE descartados por no ser la estación");
+      }
     }
     if (quality.duplicados) nota.push(quality.duplicados + " permisos repetidos fusionados");
     if (quality.fueraRango) nota.push(quality.fueraRango + " precios fuera de rango descartados");
