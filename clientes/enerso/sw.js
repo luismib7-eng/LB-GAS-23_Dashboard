@@ -20,7 +20,7 @@
    borra al activar y a las pestañas abiertas les llega el aviso.
    ============================================================= */
 
-var VERSION = "lbgas23-v9";
+var VERSION = "lbgas23-v10";
 var CACHE_SHELL = VERSION + "-cascaron";
 var CACHE_DATOS = VERSION + "-datos";
 var CACHE_MAPA = VERSION + "-mapa";
@@ -90,7 +90,13 @@ self.addEventListener("fetch", function (e) {
   if (url.protocol.indexOf("http") !== 0) return;
 
   // Mosaicos del mapa: primero caché, con tope de piezas guardadas.
-  if (/tile\.openstreetmap\.org/.test(url.hostname)) {
+  /* Coincidencia por SUFIJO de host, no por subcadena. La version
+     anterior usaba /tile\.openstreetmap\.org/ sin anclar, que tambien
+     casa con "tile.openstreetmap.org.dominio-ajeno.com": bastaba ese
+     nombre para que el service worker cachera contenido de un tercero
+     como si fuera del mapa. */
+  if (url.hostname === "tile.openstreetmap.org" ||
+      /\.tile\.openstreetmap\.org$/.test(url.hostname)) {
     e.respondWith(
       caches.open(CACHE_MAPA).then(function (c) {
         return c.match(req).then(function (hit) {

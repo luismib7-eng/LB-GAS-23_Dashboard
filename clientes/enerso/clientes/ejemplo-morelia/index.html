@@ -2,6 +2,39 @@
 <html lang="es" data-theme="dark">
 <head>
 <meta charset="utf-8">
+<!-- ══════════════ POLITICA DE SEGURIDAD DE CONTENIDO ══════════════
+     Declara el conjunto cerrado de origenes que el tablero puede usar.
+     Cualquier script, hoja de estilo, fuente o imagen de un origen que
+     no este aqui queda bloqueado por el navegador.
+
+     'unsafe-inline' en script-src y style-src es inevitable y deliberado:
+     la aplicacion, el CSS y las tres librerias (Leaflet, Chart.js,
+     PapaParse) van embebidos en este archivo para que abra como estatico
+     sin paso de compilacion y para que el service worker lo precargue
+     completo. Quitarlo obligaria a trocear el archivo, que es la
+     arquitectura que este producto no tiene. Lo que si se cierra, y es lo
+     que de verdad importa, es el conjunto de origenes EXTERNOS: sin esto,
+     un script inyectado podria exfiltrar a cualquier dominio.
+
+     frame-ancestors se declara pero NO surte efecto por meta: solo
+     funciona como cabecera HTTP, y GitHub Pages no permite definirlas.
+     La proteccion real contra enmarcado queda pendiente de un servidor
+     propio o de un proxy que pueda enviar cabeceras.
+     ═══════════════════════════════════════════════════════════════ -->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'unsafe-inline';
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  font-src 'self' data: https://fonts.gstatic.com;
+  img-src 'self' data: blob: https://*.tile.openstreetmap.org;
+  connect-src 'self';
+  manifest-src 'self';
+  worker-src 'self';
+  object-src 'none';
+  base-uri 'self';
+  form-action 'none';
+  frame-ancestors 'none';
+  upgrade-insecure-requests">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>LB GAS 23 · Monitor de Precios</title>
 <meta name="description" content="LB GAS 23 · Servicio Bautista. Tablero de inteligencia de precios de gasolina Regular, Premium y Diésel por estación de servicio.">
@@ -1566,6 +1599,41 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
 .glos ul{margin:.2rem 0 .6rem 1.1rem;padding:0;font-size:.86rem;line-height:1.5}
 .glos .glos__nota{font-size:.78rem;color:var(--muted);border-top:1px solid var(--line);padding-top:.6rem;margin-top:.9rem}
 @media(max-width:640px){.pan__tabla th,.pan__tabla td{padding:.38rem .35rem;font-size:.78rem}}
+
+/* ═══════════ Legales, aviso de privacidad y consentimiento ═══════════ */
+.footer__legal{
+  font-size:11.5px;line-height:1.6;color:var(--muted);
+  margin:10px 0 0;max-width:86ch;
+}
+.sim__legal{
+  font-size:11.5px;line-height:1.6;color:var(--muted);
+  margin:14px 0 0;padding-top:12px;border-top:1px solid var(--line);
+}
+.linklike{
+  background:none;border:0;padding:0;font:inherit;color:inherit;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer;
+}
+.linklike:hover{color:var(--text)}
+.aviso h3{font-size:13.5px;margin:16px 0 6px}
+.aviso h3:first-child{margin-top:0}
+.aviso p,.aviso li{font-size:12.5px;line-height:1.6;color:var(--muted)}
+.aviso ul{margin:6px 0 0;padding-left:18px}
+.aviso strong{color:var(--text)}
+/* El atributo hidden debe ganarle a display:flex. Sin esta regla el
+   atributo no hace nada —[hidden] es menos especifico que .consent— y
+   el banner queda visible para siempre aunque se acepte. Mismo motivo
+   por el que .modal necesita la suya. */
+.consent[hidden]{display:none}
+.consent{
+  position:fixed;left:14px;right:14px;bottom:14px;z-index:95;
+  display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  padding:14px 16px;border:1px solid var(--line-strong);
+  border-radius:var(--radius-sm);background:var(--panel);
+  box-shadow:0 10px 30px rgba(0,0,0,.26);
+}
+.consent__txt{font-size:12px;line-height:1.55;color:var(--muted);flex:1 1 320px;margin:0}
+.consent__acts{display:flex;gap:8px;flex:none}
+@media (min-width:860px){ .consent{left:auto;right:18px;bottom:18px;max-width:560px} }
 </style>
 </head>
 <body>
@@ -1911,6 +1979,13 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       </div>
 
       <div class="sim__result" id="simResult"></div>
+
+      <p class="sim__legal">
+        Escenario matemático, no asesoría financiera. Sin tu costo por litro
+        esto es diferencial contra el mercado, no utilidad. El resultado no
+        garantiza rendimientos: depende de variables que esta plataforma no
+        observa, empezando por tu volumen real.
+      </p>
     </div>
   </details>
 
@@ -2062,8 +2137,18 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       producen precios legítimamente menores. El filtro de depuración descarta registros por debajo de
       $15.00 por litro. Precios expresados en pesos por litro, tal como los publica la CNE.
     </p>
+    <p class="footer__legal">
+      Los precios mostrados son de carácter informativo y provienen del padrón
+      público de la Comisión Nacional de Energía (CNE). Esta plataforma no fija
+      precios ni garantiza la exactitud en tiempo real de lo que cobra cada
+      estación. Las proyecciones del simulador son estimaciones matemáticas de
+      escenarios: no constituyen asesoría financiera ni garantía de rendimientos
+      o utilidades.
+    </p>
     <p class="footer__meta">
       <a id="repoLink" href="#" rel="noopener">Repositorio del proyecto</a>
+      <span class="footer__dot">·</span>
+      <button type="button" class="linklike" id="btnPrivacidad">Aviso de Privacidad</button>
       <span class="footer__dot">·</span>
       <span id="footerUpdated">—</span>
     </p>
@@ -2126,6 +2211,85 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
       <p class="glos__nota">Fuente de los precios: padrón público de la Comisión Nacional de Energía,
          actualizado en cada corte. Las referencias normativas se incluyen como contexto de lectura y no
          sustituyen la asesoría fiscal o regulatoria.</p>
+    </div>
+    <div class="modal__foot">
+      <span class="modal__hint"></span>
+      <button class="btn" type="button" data-close>Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="avisoModal" hidden>
+  <div class="modal__backdrop" data-close></div>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="avisoTitle">
+    <div class="modal__head">
+      <h2 class="panel__title" id="avisoTitle">Aviso de Privacidad</h2>
+      <button class="btn btn--ghost" type="button" data-close aria-label="Cerrar">&#10005;</button>
+    </div>
+    <div class="modal__results aviso">
+
+      <h3>Responsable</h3>
+      <p><strong>LB GAS 23 &middot; Servicio Bautista</strong>, con domicilio en
+      Jalisco, M&eacute;xico, es responsable del tratamiento de los datos que se
+      describen en este aviso, conforme a la Ley Federal de Protecci&oacute;n de
+      Datos Personales en Posesi&oacute;n de los Particulares.</p>
+
+      <h3>Qu&eacute; datos se tratan, y cu&aacute;les no</h3>
+      <p>Este tablero es un sitio <strong>est&aacute;tico</strong>: no tiene servidor
+      propio, no tiene base de datos de usuarios y no existe ning&uacute;n formulario
+      que recabe datos personales. En consecuencia:</p>
+      <ul>
+        <li><strong>No se solicitan, almacenan ni transfieren datos personales
+        sensibles</strong> de ninguna clase.</li>
+        <li><strong>No se solicita la ubicaci&oacute;n del dispositivo.</strong> Las
+        distancias entre estaciones se calculan con las coordenadas del cat&aacute;logo
+        p&uacute;blico de la Comisi&oacute;n Nacional de Energ&iacute;a, no con la posici&oacute;n
+        de quien consulta.</li>
+        <li>No se usan cookies publicitarias, de rastreo ni de perfilado.</li>
+      </ul>
+
+      <h3>Almacenamiento local en su dispositivo</h3>
+      <p>Para funcionar sin conexi&oacute;n y recordar c&oacute;mo dej&oacute; la pantalla, el
+      tablero guarda informaci&oacute;n <strong>&uacute;nicamente en su propio navegador</strong>,
+      que nunca se env&iacute;a a ning&uacute;n destino:</p>
+      <ul>
+        <li><strong>Almacenamiento local:</strong> preferencias de interfaz &mdash;tema
+        claro u oscuro, producto seleccionado, filtros, estaciones marcadas como
+        propias y el costo por litro que usted capture en el simulador.</li>
+        <li><strong>Cach&eacute; del service worker:</strong> una copia de los archivos
+        p&uacute;blicos del padr&oacute;n para que el tablero abra sin red.</li>
+      </ul>
+      <p>Puede borrarlo todo en cualquier momento desde la configuraci&oacute;n de su
+      navegador. El tablero vuelve a su estado inicial y sigue funcionando.</p>
+
+      <h3>Terceros que reciben su direcci&oacute;n IP</h3>
+      <p>Por el solo hecho de cargar esta p&aacute;gina, su navegador se conecta a dos
+      servicios externos que, como cualquier servidor, registran la direcci&oacute;n IP
+      desde la que se les solicita contenido. Se declara expresamente:</p>
+      <ul>
+        <li><strong>Google Fonts</strong> (<code>fonts.googleapis.com</code>,
+        <code>fonts.gstatic.com</code>), de donde se cargan las tipograf&iacute;as.</li>
+        <li><strong>OpenStreetMap</strong> (<code>tile.openstreetmap.org</code>), de
+        donde se cargan los mosaicos del mapa, y solo cuando usted abre el mapa.</li>
+      </ul>
+      <p>LB GAS 23 no recibe, conserva ni tiene acceso a esos registros.</p>
+
+      <h3>Finalidad</h3>
+      <p>La &uacute;nica finalidad es mostrar y analizar informaci&oacute;n p&uacute;blica de precios
+      de combustibles, y conservar las preferencias de interfaz de quien consulta.
+      No hay finalidades secundarias.</p>
+
+      <h3>Derechos ARCO</h3>
+      <p>Para ejercer sus derechos de Acceso, Rectificaci&oacute;n, Cancelaci&oacute;n u
+      Oposici&oacute;n, o para cualquier duda sobre este aviso, escriba a
+      <strong>lbgas23@gmail.com</strong>. Se dar&aacute; respuesta en los plazos que marca
+      la ley. Dado que el tablero no conserva datos personales en servidor alguno,
+      el ejercicio de estos derechos se agota, en la pr&aacute;ctica, borrando el
+      almacenamiento local de su navegador.</p>
+
+      <h3>Cambios</h3>
+      <p>Cualquier modificaci&oacute;n a este aviso se publicar&aacute; en esta misma pantalla.</p>
+
     </div>
     <div class="modal__foot">
       <span class="modal__hint"></span>
@@ -6783,6 +6947,71 @@ window.APP_CONFIG = {
       }).catch(function () { /* sin soporte */ });
     });
   }
+</script>
+
+<!-- ══════════════ Consentimiento de almacenamiento local ══════════════
+     No es un banner de cookies publicitarias: este tablero no usa ninguna.
+     Informa de lo unico que guarda, que es almacenamiento local en el
+     propio navegador para que funcione sin red y recuerde la interfaz.
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="consent" id="consentBar" hidden>
+  <p class="consent__txt">
+    Este tablero guarda preferencias de interfaz y una copia de los datos
+    p&uacute;blicos <strong>en su propio navegador</strong>, para abrir sin conexi&oacute;n.
+    No usa cookies de rastreo ni recaba datos personales.
+  </p>
+  <div class="consent__acts">
+    <button class="btn btn--ghost" type="button" id="consentVer">Aviso de Privacidad</button>
+    <button class="btn" type="button" id="consentOk">Entendido</button>
+  </div>
+</div>
+
+<script>
+/* ═══════════ Aviso de privacidad y consentimiento ═══════════
+   Bloque autocontenido a proposito: no toca el IIFE principal, asi que
+   no puede romper el tablero si algo falla aqui.
+
+   localStorage va entre try/catch siempre: en modo privado estricto
+   lanza excepcion en vez de devolver null, y sin la guarda el banner
+   tumbaria la pagina justo en el navegador mas restrictivo.           */
+(function () {
+  "use strict";
+  var LLAVE = "lbgas23:consentimiento:v1";
+  var modal = document.getElementById("avisoModal");
+  var barra = document.getElementById("consentBar");
+
+  function leer(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sin persistencia */ } }
+
+  function abrir() { if (modal) modal.hidden = false; }
+  function cerrar() { if (modal) modal.hidden = true; }
+
+  if (modal) {
+    modal.addEventListener("click", function (e) {
+      if (e.target.closest("[data-close]")) cerrar();
+    });
+  }
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal && !modal.hidden) cerrar();
+  });
+
+  var btnPie = document.getElementById("btnPrivacidad");
+  if (btnPie) btnPie.addEventListener("click", abrir);
+
+  /* Si no se pudo leer el consentimiento, se muestra el aviso. Fallar
+     hacia mostrarlo es lo correcto: molesta una vez mas, no omite el
+     aviso a quien no lo ha visto. */
+  if (barra && leer(LLAVE) !== "1") {
+    barra.hidden = false;
+    var ok = document.getElementById("consentOk");
+    var ver = document.getElementById("consentVer");
+    if (ok) ok.addEventListener("click", function () {
+      guardar(LLAVE, "1");
+      barra.hidden = true;
+    });
+    if (ver) ver.addEventListener("click", abrir);
+  }
+})();
 </script>
 </body>
 </html>
