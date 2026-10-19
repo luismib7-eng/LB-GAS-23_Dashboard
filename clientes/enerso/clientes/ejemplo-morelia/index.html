@@ -4836,8 +4836,16 @@ window.APP_CONFIG = {
 
     var porFecha = {}, totalAlzas = 0, totalBajas = 0, comparables = 0, movimientos = 0;
     var porOperador = {};
+    /* Solo los pares de cortes separados por exactamente un día describen
+       conducta diaria. Un par que abarca un hueco mide el acumulado del
+       hueco y lo presenta como si fuera un día: infla la movilidad y
+       sesga el reparto alzas/bajas. Mismo criterio que patronCompetencia(). */
+    var fechasValidas = [], paresValidos = 0, paresSaltados = 0;
 
     for (var i = 1; i < fechas.length; i++) {
+      if (diasEntreCortes(fechas[i - 1], fechas[i]) !== 1) { paresSaltados++; continue; }
+      paresValidos++;
+      fechasValidas.push(fechas[i]);
       porFecha[fechas[i]] = { movidos: 0, comparables: 0, alzas: 0, bajas: 0 };
       for (var k in serie) {
         var hoy = serie[k][fechas[i]], ayer = serie[k][fechas[i - 1]];
@@ -4856,12 +4864,12 @@ window.APP_CONFIG = {
         }
       }
     }
-    if (!comparables) return null;
+    if (!comparables || !paresValidos) return null;
 
     var tabla = Object.keys(porOperador).map(function (op) {
       var d = porOperador[op];
       var n = Object.keys(d.estaciones).length;
-      var oportunidades = n * (fechas.length - 1);
+      var oportunidades = n * paresValidos;
       return { operador: op, estaciones: n, mov: d.mov, alzas: d.alzas, bajas: d.bajas,
                tasa: oportunidades ? d.mov / oportunidades : 0 };
     }).filter(function (d) { return d.estaciones >= 2; })
@@ -4869,11 +4877,12 @@ window.APP_CONFIG = {
       .slice(0, 12);
 
     return {
-      fechas: fechas.slice(1), porFecha: porFecha, tabla: tabla,
+      fechas: fechasValidas, porFecha: porFecha, tabla: tabla,
       comparables: comparables, movimientos: movimientos,
       alzas: totalAlzas, bajas: totalBajas,
       pct: comparables ? Math.round(movimientos / comparables * 100) : 0,
-      estaciones: Object.keys(serie).length, cortes: fechas.length
+      estaciones: Object.keys(serie).length, cortes: fechas.length,
+      paresValidos: paresValidos, paresSaltados: paresSaltados
     };
   }
 
@@ -4974,11 +4983,25 @@ window.APP_CONFIG = {
       kpis.innerHTML = "";
       cuerpo.innerHTML = "";
       vacio.hidden = false;
-      vacio.textContent = "Se necesitan al menos dos cortes cargados en el padrón para medir " +
-        "movimientos. El flujo diario los acumula solo.";
+      vacio.textContent = "No hay dos cortes consecutivos cargados en el padrón, así que no se " +
+        "puede medir conducta diaria. Un par de cortes separado por un hueco mide el acumulado " +
+        "del hueco, no el movimiento de un día, y por eso se descarta.";
       return;
     }
     vacio.hidden = true;
+
+    /* Se declara en pantalla cuántos pares se midieron de verdad y cuántos se
+       descartaron por no ser consecutivos. Sin esto, la movilidad se lee como
+       si todos los cortes cargados fueran días seguidos. */
+    if (cortesEl) {
+      cortesEl.textContent = periods().length + " cortes del padrón · " +
+        d.paresValidos + " día" + (d.paresValidos === 1 ? "" : "s") + " medido" +
+        (d.paresValidos === 1 ? "" : "s") +
+        (d.paresSaltados
+          ? " · " + d.paresSaltados + " par" + (d.paresSaltados === 1 ? "" : "es") +
+            " descartado" + (d.paresSaltados === 1 ? "" : "s") + " por hueco entre cortes"
+          : "");
+    }
 
     var quietas = d.comparables - d.movimientos;
     kpis.innerHTML =
@@ -4997,7 +5020,7 @@ window.APP_CONFIG = {
       '<div class="din__kpi"><p class="din__kpi-label">Sin moverse</p>' +
         '<p class="din__kpi-valor">' + quietas.toLocaleString("es-MX") + '</p>' +
         '<p class="din__kpi-pie">comparaciones sin cambio · ' + d.estaciones.toLocaleString("es-MX") +
-        ' estaciones seguidas en ' + (d.cortes - 1) + ' transición(es)</p></div>';
+        ' estaciones seguidas en ' + d.paresValidos + ' transición(es) de un día</p></div>';
 
     cuerpo.innerHTML = d.tabla.length ? d.tabla.map(function (o) {
       var conducta = o.tasa >= 0.4 ? ["activo", "Mueve seguido"]
