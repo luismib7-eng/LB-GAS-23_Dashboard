@@ -4725,6 +4725,31 @@ window.APP_CONFIG = {
   var SIN_DATO_TXT = "No especificado";
   var COMP_MAX = 8;
 
+  /* ---------------------------------------------------------
+     Agrupación por operador: registros y estaciones NO son lo mismo
+
+     La ventana del padrón conserva varios cortes (hoy 7), así que el mismo
+     permiso aparece una vez por corte. Un operador de 546 estaciones aporta
+     3,822 registros. Contar registros y rotularlos "estaciones" multiplica el
+     parque por el número de cortes, y además mete operadores de UNA estación
+     en listas tituladas "con dos o más" / "con tres o más": basta con que
+     hayan reportado ese número de días.
+
+     Por eso cada grupo guarda las dos cosas por separado:
+       precios  -> un valor por registro, para promediar sobre el periodo
+       sitiosN  -> permisos DISTINTOS, que es el conteo de estaciones
+
+     La llave es permitKey(), que normaliza los dos formatos que conviven en
+     el padrón: PL/.../EXP/ES/AAAA y CNE/PL/.../EXP/ES/AAAA.
+     --------------------------------------------------------- */
+  function acumularGrupo(mapa, llave, precio, permiso) {
+    var g = mapa[llave];
+    if (!g) { g = mapa[llave] = { precios: [], sitios: {}, sitiosN: 0 }; }
+    g.precios.push(precio);
+    var k = permitKey(permiso);
+    if (k && !g.sitios[k]) { g.sitios[k] = 1; g.sitiosN++; }
+  }
+
   function renderCompetencia(rows) {
     var caja = $("compCards"), nota = $("compNote");
     if (!caja) return;
@@ -4735,9 +4760,9 @@ window.APP_CONFIG = {
     rows.forEach(function (r) {
       if (r[p] === null) return;
       conPrecio++;
-      if (r._marca) { conMarca++; (porMarca[r._marca] = porMarca[r._marca] || []).push(r[p]); }
+      if (r._marca) { conMarca++; acumularGrupo(porMarca, r._marca, r[p], r.permiso); }
       var razon = (r.estacion || "").trim();
-      if (razon && razon !== SIN_DATO_TXT) (porGrupo[razon] = porGrupo[razon] || []).push(r[p]);
+      if (razon && razon !== SIN_DATO_TXT) acumularGrupo(porGrupo, razon, r[p], r.permiso);
     });
 
     /* Se usa el modo marca solo si cubre al menos el 15% de la selección. Con
@@ -4748,8 +4773,11 @@ window.APP_CONFIG = {
     var minimo = porRazon ? 2 : 1;      // un grupo con una sola estación no es grupo
 
     var lista = Object.keys(fuente)
-      .filter(function (k) { return fuente[k].length >= minimo; })
-      .map(function (k) { return { marca: k, avg: avg(fuente[k]), n: fuente[k].length }; })
+      .filter(function (k) { return fuente[k].sitiosN >= minimo; })
+      .map(function (k) {
+        return { marca: k, avg: avg(fuente[k].precios), n: fuente[k].sitiosN,
+                 registros: fuente[k].precios.length };
+      })
       .sort(function (a, b) { return b.n - a.n || a.avg - b.avg; })
       .slice(0, COMP_MAX)
       .sort(function (a, b) { return a.avg - b.avg; });
@@ -4776,7 +4804,8 @@ window.APP_CONFIG = {
       var nombre = d.marca.length > 38 ? d.marca.slice(0, 36) + "…" : d.marca;
       return '<div class="comp__card' + clase + '" data-tip data-tip-title="' + esc(d.marca) +
         '" data-tip-body="' + d.n + (d.n > 1 ? " estaciones" : " estación") + " en la selección · promedio " +
-        money(d.avg) + (dif === null ? "" : " · " + (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) +
+        money(d.avg) + " sobre " + d.registros.toLocaleString("es-MX") +
+        (d.registros === 1 ? " registro" : " registros") + (dif === null ? "" : " · " + (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) +
         " contra el promedio de la zona") + '">' +
         '<p class="comp__marca">' + esc(nombre) + "</p>" +
         '<p class="comp__precio">' + money(d.avg) + "</p>" +
@@ -4786,7 +4815,7 @@ window.APP_CONFIG = {
     }).join("");
 
     if (nota) {
-      var universo = Object.keys(fuente).filter(function (k) { return fuente[k].length >= minimo; }).length;
+      var universo = Object.keys(fuente).filter(function (k) { return fuente[k].sitiosN >= minimo; }).length;
       nota.textContent = (porRazon
           ? "Grupos operadores con dos o más estaciones · " + lista.length + " de " + universo +
             " en la selección, ordenados por precio"
@@ -5087,9 +5116,9 @@ window.APP_CONFIG = {
     rows.forEach(function (r) {
       if (r[prod] === null) return;
       conPrecio++;
-      if (r._marca) { conMarca++; (porMarca[r._marca] = porMarca[r._marca] || []).push(r[prod]); }
+      if (r._marca) { conMarca++; acumularGrupo(porMarca, r._marca, r[prod], r.permiso); }
       var razon = (r.estacion || "").trim();
-      if (razon && razon !== SIN_DATO_TXT) (porGrupo[razon] = porGrupo[razon] || []).push(r[prod]);
+      if (razon && razon !== SIN_DATO_TXT) acumularGrupo(porGrupo, razon, r[prod], r.permiso);
     });
 
     var porRazon = !conPrecio || (conMarca / conPrecio) < 0.15;
@@ -5097,10 +5126,10 @@ window.APP_CONFIG = {
     var minimo = porRazon ? 3 : 1;
 
     var lista = Object.keys(fuente)
-      .filter(function (k) { return fuente[k].length >= minimo; })
+      .filter(function (k) { return fuente[k].sitiosN >= minimo; })
       .map(function (k) {
-        var v = fuente[k].slice().sort(function (a, b) { return a - b; });
-        return { marca: k, avg: avg(v), min: v[0], n: v.length };
+        var v = fuente[k].precios.slice().sort(function (a, b) { return a - b; });
+        return { marca: k, avg: avg(v), min: v[0], n: fuente[k].sitiosN, registros: v.length };
       })
       .sort(function (a, b) { return b.n - a.n; })
       .slice(0, 12)
