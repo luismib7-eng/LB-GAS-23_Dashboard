@@ -492,6 +492,29 @@ def escribir(filas, salida, acumular, conservar, fecha):
     return {"accion": "acumulado", "periodos": len(fechas), "filas": len(todas)}
 
 
+def _conservar_sin_borrar(ruta, fechas, conservar):
+    """
+    Regla 1.2 del proyecto: `historico.csv` y `movimientos.csv` son memoria
+    larga irrecuperable. La CNE no republica series: una fecha que se borra
+    aqui no vuelve nunca, ni pagando.
+
+    Esta funcion existe porque el recorte por antiguedad SI estaba activo y
+    programado para empezar a destruir datos. Ahora el tope nunca borra: si
+    alguien vuelve a pasar un numero, se avisa a gritos y se conserva todo.
+    El parametro queda solo como alarma de tamano.
+    """
+    if not conservar or len(fechas) <= conservar:
+        return set(fechas)
+    sobran = len(fechas) - conservar
+    sys.stderr.write(
+        "\nAVISO: se pidio conservar solo %d fechas en %s y hay %d.\n"
+        "       NO se borro ninguna. Las %d mas antiguas (desde %s) se\n"
+        "       habrian perdido para siempre: la CNE no republica series.\n"
+        "       Si de verdad hay que recortar, hazlo a mano y con respaldo.\n\n"
+        % (conservar, ruta, len(fechas), sobran, sorted(fechas)[0]))
+    return set(fechas)
+
+
 def escribir_historico(filas, ruta, fecha, conservar):
     """
     Serie histórica ligera: un renglón por ámbito y producto, no por estación.
@@ -539,10 +562,9 @@ def escribir_historico(filas, ruta, fecha, conservar):
 
     todas = previas + nuevas
     fechas = sorted(set(fechas + [fecha]))
-    if conservar and len(fechas) > conservar:
-        vigentes = set(fechas[-conservar:])
-        todas = [f for f in todas if (f.get("Fecha") or "").strip() in vigentes]
-        fechas = sorted(vigentes)
+    vigentes = _conservar_sin_borrar(ruta, fechas, conservar)
+    todas = [f for f in todas if (f.get("Fecha") or "").strip() in vigentes]
+    fechas = sorted(vigentes)
 
     with io.open(ruta, "w", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=COLUMNAS_HISTORICO, lineterminator="\n", extrasaction="ignore")
@@ -936,7 +958,7 @@ COLUMNAS_MOVIMIENTOS = ["Fecha", "Permiso CRE", "Estacion", "Estado", "Municipio
                         "Producto", "Anterior", "Nuevo", "Cambio"]
 
 
-def registrar_movimientos(filas, salida_padron, ruta, fecha, conservar=400):
+def registrar_movimientos(filas, salida_padron, ruta, fecha, conservar=0):
     """
     Bitácora de cambios de precio por estación.
 
@@ -988,9 +1010,8 @@ def registrar_movimientos(filas, salida_padron, ruta, fecha, conservar=400):
 
     todas = previas + nuevos
     fechas = sorted({(f.get("Fecha") or "").strip() for f in todas if f.get("Fecha")})
-    if conservar and len(fechas) > conservar:
-        vigentes = set(fechas[-conservar:])
-        todas = [f for f in todas if (f.get("Fecha") or "").strip() in vigentes]
+    vigentes = _conservar_sin_borrar(ruta, fechas, conservar)
+    todas = [f for f in todas if (f.get("Fecha") or "").strip() in vigentes]
 
     with io.open(ruta, "w", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=COLUMNAS_MOVIMIENTOS, lineterminator="\n", extrasaction="ignore")
@@ -1015,14 +1036,14 @@ def main():
                     help="Con --acumular, número de cortes diarios a conservar (0 = todos)")
     ap.add_argument("--historico", default="",
                     help="CSV de promedios diarios por ámbito y producto que alimenta la gráfica de tendencia")
-    ap.add_argument("--historico-conservar", type=int, default=120,
-                    help="Cortes diarios a conservar en el histórico de promedios (por omisión 120)")
+    ap.add_argument("--historico-conservar", type=int, default=0,
+                    help="Alarma de tamaño del histórico. 0 = sin tope (por omisión). Nunca borra: la serie es irrecuperable (regla 1.2)")
     ap.add_argument("--exportar-catalogo", default="",
                     help="Escribe el catálogo leído a este CSV (útil para convertir el XML de estaciones de la CNE)")
     ap.add_argument("--movimientos", default="",
                     help="Bitácora de cambios de precio por estación (quién movió y cuánto)")
-    ap.add_argument("--movimientos-conservar", type=int, default=400,
-                    help="Días de bitácora a conservar")
+    ap.add_argument("--movimientos-conservar", type=int, default=0,
+                    help="Alarma de tamaño de la bitácora. 0 = sin tope (por omisión). Nunca borra: la serie es irrecuperable (regla 1.2)")
     ap.add_argument("--reporte", default="",
                     help="CSV con las métricas estilo Profeco (nacional, por marca y por región)")
     ap.add_argument("--marcas", default="BP,TOTALENERGIES,REPSOL,SHELL,CHEVRON,EXXONMOBIL,GULF,G500,OXXO GAS,ARCO NORTE",

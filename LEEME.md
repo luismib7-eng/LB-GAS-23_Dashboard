@@ -1,48 +1,84 @@
-# v14 · Ciberseguridad, estructura y cumplimiento legal
+# v15 · Unificado: seguridad/legal + corrección de dinámica
 
 **Dos archivos: `index.html` y `sw.js`. Reemplazan los de la raíz del repo.**
-Ningún CSV se toca. `historico.csv` y `movimientos.csv` son irrecuperables.
+Ningún CSV se toca. `historico.csv` y `movimientos.csv` quedan intactos.
 
 Service worker: `lbgas23-v9` → **`lbgas23-v10`**. Recarga dos veces al publicar.
 
+Este paquete **sustituye a los dos ZIP anteriores**
+(`LBGAS23_fix_dinamica_2026-10-19` y `lbgas23-v14-seguridad-legal`).
+No cargues ninguno de los dos por separado: cada uno tiene solo la mitad.
+
 ---
 
-## Lo que YA estaba bien, y no toqué
+## Cómo se unificó, y por qué se puede afirmar que no hay conflicto
 
-Audité antes de escribir. Cinco de las directrices ya estaban cumplidas, y
-cambiarlas habría sido trabajo inventado:
+Los dos ZIP salieron de la **misma base** del repositorio. Se reconstruyó esa
+base revirtiendo el parche de dinámica, y se aislaron los dos conjuntos de
+cambios por separado. Los rangos que toca cada uno:
+
+| Parche | Líneas de la base que modifica |
+|---|---|
+| Seguridad y legal | 2, 1566, 1911, 2062, 2134, 6830 |
+| Dinámica | 4718 – 4902 |
+
+**No se tocan.** Ambos se aplicaron sobre la base y el resultado es
+**byte por byte idéntico en los dos órdenes de aplicación**, que es la prueba
+de que ninguno pisa al otro. No se copió y pegó nada a mano.
+
+---
+
+## Contenido 1 · Corrección de `calcularDinamica()`
+
+La ventana conserva los últimos cortes **cargados**, no los últimos días. Un par
+que abarca un hueco medía el acumulado del hueco y lo presentaba como si fuera
+un día: inflaba la movilidad y sesgaba el reparto alzas/bajas.
+
+`patronCompetencia()` ya resolvía esto con `diasEntreCortes(a,b) !== 1`. El
+criterio se propagó al otro bloque; no se inventó nada nuevo.
+
+Además, ahora **se declara en pantalla** cuántos días se midieron de verdad y
+cuántos pares se descartaron. Verificado con el padrón real de 5 cortes que
+incluye el salto del 2 al 13 de octubre:
+
+> **Movimientos por estación** · 5 cortes del padrón · **3 días medidos** ·
+> **1 par descartado por hueco entre cortes**
+
+La gráfica dibuja 3 barras, no 4. Las tarjetas dicen *"13,792 estaciones
+seguidas en 3 transición(es) **de un día**"*.
+
+El estado vacío también cambió: antes decía que faltaban cortes; ahora explica
+que no hay dos cortes **consecutivos**, que es la condición real.
+
+---
+
+## Contenido 2 · Seguridad y cumplimiento legal
+
+### Lo que ya estaba bien y NO se tocó
+
+Se auditó antes de escribir. Seis directrices ya estaban cumplidas:
 
 | Directriz | Estado real |
 |---|---|
-| XSS en inyecciones al DOM | **0 de 37 `innerHTML` del código propio interpolan variables sin escapar.** Existe `esc()` y se usa |
-| `eval`, `document.write`, `new Function` | **Cero ocurrencias** |
-| Inyección por parámetros de URL | **No se leen:** cero `location.search`, cero `URLSearchParams` |
-| Destrucción de gráficas | **Las 6 pasan por el helper `destroy(name)`** antes de redibujar. No hay fuga |
-| Limpieza de capas del mapa | `clearLayers()` y `removeLayer` ya presentes |
-| `console.log` de desarrollo | **Cero** en el código propio |
+| Escapado en inyecciones al DOM | 0 de 37 `innerHTML` interpolan variables sin escapar; `esc()` existe y se usa |
+| `eval`, `document.write`, `new Function` | Cero ocurrencias |
+| Inyección por parámetros de URL | No se leen: cero `location.search`, cero `URLSearchParams` |
+| `chart.destroy()` antes de redibujar | Las 6 gráficas pasan por el helper `destroy(name)` |
+| `clearLayers()` en el mapa | Ya presente |
+| `console.log` de desarrollo | Cero en el código propio |
 
-### Y una directriz que no aplica
+### Y una que no aplica
 
-Pediste declarar en el aviso de privacidad el *"cálculo de distancias por
-geolocalización en tiempo real"*.
+El tablero **no usa geolocalización**: cero `navigator.geolocation`, cero
+`map.locate()` en código propio. Las distancias salen de las coordenadas del
+catálogo de la CNE. Declarar "cálculo de distancias por geolocalización en
+tiempo real" habría sido confesar en el aviso un tratamiento de datos que no
+ocurre. El aviso dice lo contrario: **que la ubicación no se solicita.**
 
-**El tablero no usa geolocalización.** Cero `navigator.geolocation`, cero
-`map.locate()`. Las distancias se calculan con las coordenadas del catálogo
-público de la CNE, no con la posición de quien consulta.
+### Lo que se agregó
 
-Escribir esa frase habría declarado un tratamiento de datos que no ocurre —un
-aviso de privacidad que miente en contra tuya— así que el aviso dice lo
-contrario: **que la ubicación no se solicita.** Eso es más fuerte ante un
-cliente corporativo que la frase genérica.
-
----
-
-## Lo que cambié
-
-### 1. Política de Seguridad de Contenido
-
-`<meta http-equiv="Content-Security-Policy">` con el conjunto cerrado de
-orígenes que el tablero usa realmente, verificado contra el código:
+**Política de Seguridad de Contenido** (`<meta http-equiv>`), cerrada a los
+cuatro orígenes que el tablero usa de verdad:
 
 ```
 default-src 'self'; script-src 'self' 'unsafe-inline';
@@ -54,67 +90,37 @@ object-src 'none'; base-uri 'self'; form-action 'none';
 frame-ancestors 'none'; upgrade-insecure-requests
 ```
 
-**Dos cosas que debes saber, y no son opcionales:**
+**Dos límites que debes conocer.** `'unsafe-inline'` es inevitable: toda la
+aplicación va embebida para que abra como archivo estático. Lo que sí se cierra
+—y es lo que importa— son los orígenes externos de salida. Y **`frame-ancestors`
+no surte efecto por meta**: solo como cabecera HTTP, y GitHub Pages no las
+permite. El navegador lo reporta en consola; es esperado, no un error. Queda
+declarado para cuando migres de alojamiento.
 
-`'unsafe-inline'` es inevitable. Toda la aplicación, el CSS y las tres
-librerías van embebidos en el archivo para que abra como estático y el service
-worker lo precargue completo. Quitarlo obliga a trocear el archivo, que es la
-arquitectura que este producto deliberadamente no tiene. **Lo que sí se cierra
-—y es lo que de verdad importa— son los orígenes externos:** sin CSP, un script
-inyectado podía exfiltrar a cualquier dominio; ahora solo existen cuatro
-destinos permitidos.
+**Service worker: coincidencia de host anclada.** La regla de mosaicos era
+`/tile\.openstreetmap\.org/` sin anclar, que **también casa con
+`tile.openstreetmap.org.dominio-ajeno.com`**: bastaba registrar ese nombre para
+que el service worker cacheara contenido ajeno como si fuera del mapa. Ahora es
+igualdad exacta o sufijo `.tile.openstreetmap.org`.
 
-`frame-ancestors` **no surte efecto por meta.** Solo funciona como cabecera
-HTTP, y GitHub Pages no permite definirlas. Lo dejé declarado para cuando
-migres a un servidor o proxy propio, pero hoy la protección contra enmarcado
-no está activa. El navegador lo reporta en consola; es esperado, no un error.
+**Aviso de Privacidad (LFPDPPP)** en modal desde el pie, con el patrón existente
+(`data-close`, cierre con Escape): responsable, sitio estático sin servidor ni
+formularios, no se solicita ubicación, no se tratan datos sensibles, qué guarda
+el almacenamiento local y cómo borrarlo, y derechos ARCO a `lbgas23@gmail.com`.
 
-### 2. Service worker: coincidencia de host anclada
+Lleva además un apartado que la directriz no pedía: **los dos terceros que
+reciben la IP del visitante por el solo hecho de cargar la página** —Google
+Fonts y los mosaicos de OpenStreetMap—. Una plantilla genérica lo omite; un
+comprador corporativo que audite el sitio lo detecta en treinta segundos.
 
-La regla de mosaicos era `/tile\.openstreetmap\.org/` sin anclar. Eso **también
-casa con `tile.openstreetmap.org.dominio-ajeno.com`**: bastaba registrar ese
-nombre para que el service worker cacheara contenido de un tercero como si
-fuera del mapa.
+**Consentimiento de almacenamiento local:** banner flotante con "Entendido" y
+acceso al aviso. La bandera va en `localStorage` **entre `try/catch`**. Si no se
+puede leer el consentimiento, el banner se muestra: fallar hacia mostrarlo
+molesta una vez más, pero nunca omite el aviso a quien no lo ha visto. El
+bloque de JavaScript es autocontenido, fuera del IIFE principal.
 
-Ahora es igualdad exacta o sufijo `.tile.openstreetmap.org`.
-
-El resto del `fetch` ya validaba bien: filtra por protocolo `http`, y solo
-guarda en caché cuando el origen es el propio. El cruzado nunca se cachea.
-
-### 3. Aviso de Privacidad (LFPDPPP)
-
-Modal accesible desde el pie, con el mismo patrón de los modales existentes
-(`data-close`, cierre con Escape). Redactado contra lo que el tablero hace:
-
-- **Responsable** e identidad comercial
-- **Sitio estático:** sin servidor, sin base de usuarios, sin formularios
-- **No se solicita la ubicación del dispositivo** (verificado en el código)
-- **No se tratan datos sensibles**, ni cookies de rastreo o perfilado
-- **Almacenamiento local:** qué guarda exactamente y cómo borrarlo
-- **Derechos ARCO** a `lbgas23@gmail.com`
-
-**Un apartado que no pediste y que agregué:** los dos terceros que reciben la
-IP del visitante por el solo hecho de cargar la página — **Google Fonts** y los
-**mosaicos de OpenStreetMap**. Una plantilla genérica lo omite; un comprador
-corporativo que audite el sitio lo detecta en treinta segundos y te pregunta
-por qué no estaba declarado.
-
-### 4. Consentimiento de almacenamiento local
-
-Banner flotante, no intrusivo, con "Entendido" y acceso directo al aviso. La
-bandera se guarda en `localStorage` **entre `try/catch`**: en modo privado
-estricto lanza excepción, y sin la guarda el banner tumbaría la página justo en
-el navegador más restrictivo. Si no se puede leer el consentimiento, el aviso
-se muestra: fallar hacia mostrarlo molesta una vez más, pero nunca omite el
-aviso a quien no lo ha visto.
-
-El bloque de JavaScript es **autocontenido**, fuera del IIFE principal: si algo
-falla ahí, no puede romper el tablero.
-
-### 5. Deslinde legal
-
-En el pie y dentro del simulador. El del simulador es más directo porque es
-donde se toma la decisión:
+**Deslinde legal** en el pie y dentro del simulador. El del simulador es más
+directo porque es donde se decide:
 
 > *Escenario matemático, no asesoría financiera. Sin tu costo por litro esto es
 > diferencial contra el mercado, no utilidad. El resultado no garantiza
@@ -123,29 +129,118 @@ donde se toma la decisión:
 
 ---
 
-## Verificado en navegador, no sobre el papel
+## Verificado sobre el archivo unificado, no sobre las partes
 
-Servido local con los datos reales del repositorio y abierto en Chromium:
+Los 7 bloques de JavaScript pasan `node --check`. Servido local con el padrón
+real y abierto en Chromium:
 
-- **Cero errores de JavaScript**
-- **Cero bloqueos de CSP** salvo el aviso esperado de `frame-ancestors`
-- Modal abre desde el pie, cierra con el botón y con Escape
-- Banner aparece, se oculta al aceptar y **sigue oculto tras recargar**
-- Deslindes presentes en pie y simulador
+```
+ERRORES JS                : ninguno
+AVISOS CSP                : solo el esperado de frame-ancestors
+banner visible al entrar  : sí
+#consentOk oculta banner  : sí
+sigue oculto al recargar  : sí
+modal abre del pie y del banner, cierra con Escape
+declara NO geolocalizar   : sí
+declara Google Fonts y OSM: sí
+ARCO a lbgas23@gmail.com  : sí
+dinámica                  : 5 cortes · 3 días medidos · 1 par descartado
+```
 
-**Un defecto que encontré en mi propio parche y corregí:** el banner no se
-ocultaba. `.consent{display:flex}` le gana por especificidad a
-`[hidden]{display:none}`, así que el atributo no hacía nada y el aviso quedaba
-visible para siempre aunque se aceptara. Agregada la regla `.consent[hidden]`.
-El código ya tenía ese patrón en `.modal`, `.empty` y `.sw-aviso`; mi omisión
-era la anomalía.
+**Nota de la prueba:** aparece un 404 de `denue.csv` porque mi carpeta de prueba
+no lo incluye. No es un fallo: el código lo resuelve con
+`.then(buildDenueSafe, function(){ return null; })` y el tablero sigue
+mostrando la razón social. En tu repositorio el archivo sí existe.
 
 ---
 
-## Lo que queda pendiente y no depende de mí
+## Pendiente, y no depende del código
 
-- **`frame-ancestors` real:** requiere cabecera HTTP. GitHub Pages no las
-  permite. Si llega un cliente que lo exija en una auditoría, es motivo para
-  mover el alojamiento, no para tocar el código.
-- **Píxel de Meta y medio de contacto en la página:** siguen sin instalarse.
-  Necesito tu Pixel ID.
+- **`frame-ancestors` real:** requiere cabecera HTTP. Motivo para mover el
+  alojamiento si un cliente lo exige en auditoría, no para tocar el tablero.
+- **Píxel de Meta y medio de contacto:** falta tu Pixel ID.
+
+---
+---
+
+# v16 · Se agrega la corrección del ETL (19 oct, tarde)
+
+Este paquete ya **no es solo el tablero**. Trae dos archivos más, porque al
+recalcular las cifras de la base de conocimiento apareció un defecto que estaba
+programado para destruir datos.
+
+## El defecto: el histórico sí se estaba recortando
+
+La regla 1.2 del proyecto dice que `historico.csv` no se borra, recorta ni
+reformatea. **El flujo diario lo estaba recortando.**
+
+`.github/workflows/actualizar-datos.yml` corría con
+`--historico-conservar 120`, y `escribir_historico()` en `xml_a_csv.py` hacía
+exactamente lo que ese número pide:
+
+```python
+if conservar and len(fechas) > conservar:
+    vigentes = set(fechas[-conservar:])
+    todas = [f for f in todas if ... in vigentes]
+```
+
+La serie arranca el **19 de agosto de 2026** y hoy lleva 62 fechas sin un solo
+hueco. En la fecha 121 el corte automático empieza a tirar la más antigua:
+
+> **El 17 de diciembre de 2026 se habría borrado el 19 de agosto**, y de ahí una
+> fecha por día.
+
+El pacto SENER vence en **febrero de 2027**. El recorte habría destruido el
+"antes" de la comparación antes/después **dos meses antes de que llegara el
+"después"** — el único activo del producto que no se puede comprar más tarde,
+porque la CNE no republica series.
+
+`movimientos.csv` tenía lo mismo con `--movimientos-conservar 400`: primer
+borrado el 9 de noviembre de 2027.
+
+## La corrección, en tres capas
+
+1. **Workflow:** los dos topes a `0`. `--conservar 7` del padrón **no se toca**:
+   ése sí es una ventana móvil a propósito.
+2. **Valores por omisión:** `120 → 0` y `400 → 0`, para que una corrida sin la
+   bandera tampoco recorte.
+3. **Blindaje en el código:** se agregó `_conservar_sin_borrar()`. Si alguien
+   vuelve a pasar un número, **no borra nada**: avisa por `stderr` nombrando las
+   fechas que se habrían perdido. El parámetro queda solo como alarma de tamaño.
+
+La tercera capa es la que importa: las dos primeras se revierten con un
+descuido de una línea.
+
+## Probado contra el archivo real, no sobre el papel
+
+Se cargaron las dos versiones del ETL en el mismo proceso y se corrieron contra
+el `historico.csv` real de 62 fechas, con las 13,854 filas reales del corte del
+19 de octubre:
+
+```
+VIEJO  con --historico-conservar 10 ->  10 fechas (2026-10-11 -> 2026-10-20)  BORRO 53
+NUEVO  con --historico-conservar 10 ->  63 fechas (2026-08-19 -> 2026-10-20)  conservo todo
+
+sin tope (0), viejo vs nuevo identicos byte a byte: True
+```
+
+La última línea es la que da tranquilidad: **sin tope, el parche no cambia
+absolutamente nada** del comportamiento normal. Solo quita el borrado.
+
+## Qué reemplazar
+
+| Archivo | Dónde va |
+|---|---|
+| `index.html` | raíz del repo |
+| `sw.js` | raíz del repo |
+| `xml_a_csv.py` | raíz del repo |
+| `actualizar-datos.yml` | `.github/workflows/` |
+
+Los CSV **no se tocan**. El próximo corte ya no recorta.
+
+## Un horizonte que sí queda abierto
+
+`movimientos.csv` crece ~84 KB por fecha (~30 MB al año) y **GitHub rechaza
+archivos de más de 100 MB**: son unos **3.3 años**. No lo carga el navegador, así
+que no afecta la apertura del tablero, pero cuando se acerque la salida es
+**archivar por año**, no recortar. Queda anotado en la base de conocimiento.
