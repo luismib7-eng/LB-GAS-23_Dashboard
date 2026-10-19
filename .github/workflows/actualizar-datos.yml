@@ -152,8 +152,8 @@ jobs:
                   --fecha "$(date -u +%Y-%m-%d)" \
                   --salida fallback.csv \
                   --acumular --conservar 7 \
-                  --historico historico.csv --historico-conservar 120 \
-                  --movimientos movimientos.csv --movimientos-conservar 400 \
+                  --historico historico.csv --historico-conservar 0 \
+                  --movimientos movimientos.csv --movimientos-conservar 0 \
                   --reporte reporte_mercado.csv
 
       - name: Generar el histórico en Excel
