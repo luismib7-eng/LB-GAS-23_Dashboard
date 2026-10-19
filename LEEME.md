@@ -244,3 +244,88 @@ Los CSV **no se tocan**. El próximo corte ya no recorta.
 archivos de más de 100 MB**: son unos **3.3 años**. No lo carga el navegador, así
 que no afecta la apertura del tablero, pero cuando se acerque la salida es
 **archivar por año**, no recortar. Queda anotado en la base de conocimiento.
+
+---
+---
+
+# v17 · "Estaciones" que eran registros, en dos paneles
+
+Lo detectó Luis mirando la tarjeta de un grupo operador y preguntando si ese
+número eran sus estaciones o los registros del precio. Eran registros.
+
+## Qué estaba mal
+
+`renderCompetencia()` acumulaba un valor por **fila** del padrón:
+
+```js
+(porGrupo[razon] = porGrupo[razon] || []).push(r[p]);
+...
+n: fuente[k].length          // <- registros, rotulados "estaciones"
+```
+
+La ventana conserva **7 cortes**, así que el mismo permiso aparece siete veces.
+Un operador de 546 estaciones aportaba 3,822 registros, y la tarjeta decía
+"3,822 estaciones".
+
+| Grupo | Decía | Estaciones reales |
+|---|---|---|
+| Servicios Gasolineros de México | 3,822 | **546** |
+| Petromax | 1,939 | **277** |
+| Servicio Fácil del Sureste | 770 | **110** |
+| Energía y Servicios Coordinados | 665 | **95** |
+| Mega Gasolineras | 637 | **91** |
+| Combu-Express | 539 | **77** |
+| E.S.G.E.S | 427 | **61** |
+| Grupo Octano | 392 | **56** |
+
+**Y había un segundo efecto, peor que el número inflado.** El filtro
+`fuente[k].length >= minimo` también contaba registros, así que un operador de
+**una sola estación** entraba a una lista titulada "grupos con dos o más
+estaciones" con solo haber reportado dos días. El universo del subtítulo pasaba
+de **1,422 grupos reales a 8,222**.
+
+El mismo defecto estaba en `renderMarcasChart()` — la gráfica de "operadores con
+tres o más estaciones" de la vista Profundidad.
+
+**Por qué nadie lo vio antes:** con el selector de Periodo en una fecha concreta,
+registros y estaciones coinciden y el panel es correcto. Solo se desvía en
+"Todos los periodos". Y empeoró en silencio cuando el flujo pasó de 3 a 7
+cortes: el error se multiplicó de ×3 a ×7.
+
+## La corrección
+
+Un helper compartido, `acumularGrupo()`, que separa las dos cosas que nunca
+debieron ir juntas:
+
+- `precios` → un valor por registro, para promediar sobre el periodo
+- `sitiosN` → permisos **distintos**, que es el conteo de estaciones
+
+La llave es `permitKey()`, que ya existía y normaliza los dos formatos que
+conviven en el padrón (`PL/…` y `CNE/PL/…`). El promedio no cambia: sigue
+calculándose sobre todos los registros del periodo, que es lo correcto y lo que
+lo hace comparable con el promedio de referencia.
+
+El tooltip ahora **declara las dos cifras**, para que no se vuelva a confundir:
+
+> 110 estaciones en la selección · promedio $23.69 **sobre 770 registros** ·
+> −0.00 contra el promedio de la zona
+
+## Verificado contra el padrón, no contra sí mismo
+
+Los conteos se calcularon aparte en Python sobre `fallback.csv` y se comparó
+contra lo que pinta el navegador con "Todos los periodos":
+
+```
+subtitulo: 8 de 1422 en la seleccion   (antes: 8 de 8222)
+  SERVICIO FACIL DEL SURESTE      110 estaciones · -0.00 vs. zona
+  MEGA GASOLINERAS                 91 estaciones · +0.27 vs. zona
+  PETROMAX                        277 estaciones · +0.28 vs. zona
+  SERVICIOS GASOLINEROS DE MEXICO 546 estaciones · +0.32 vs. zona
+  E.S.G.E.S                        61 estaciones · +0.34 vs. zona
+  COMBU-EXPRESS                    77 estaciones · +0.38 vs. zona
+  GRUPO OCTANO                     56 estaciones · +0.48 vs. zona
+  ENERGIA Y SERVICIOS COORDINADOS  95 estaciones · +0.50 vs. zona
+```
+
+Los ocho coinciden con el cálculo independiente. **Los precios y los
+diferenciales no se movieron ni un centavo**: el parche solo toca el conteo.
