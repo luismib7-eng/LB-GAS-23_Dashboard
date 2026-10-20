@@ -46,7 +46,8 @@ ARCHIVOS_APP = [
     ".nojekyll",
 ]
 
-DATOS = ["fallback.csv", "historico.csv", "catalogo_estaciones.csv", "reporte_mercado.csv"]
+DATOS = ["fallback.csv", "historico.csv", "catalogo_estaciones.csv",
+         "reporte_mercado.csv", "denue.csv", "conducta.csv"]
 
 
 def normaliza_permiso(p):

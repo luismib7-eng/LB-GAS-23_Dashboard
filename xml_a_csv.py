@@ -38,6 +38,7 @@ import argparse
 import csv
 import datetime
 import io
+import math
 import os
 import re
 import sys
@@ -513,6 +514,166 @@ def _conservar_sin_borrar(ruta, fechas, conservar):
         "       Si de verdad hay que recortar, hazlo a mano y con respaldo.\n\n"
         % (conservar, ruta, len(fechas), sobran, sorted(fechas)[0]))
     return set(fechas)
+
+
+CATALOGO_POR_OMISION = "catalogo_estaciones.csv"
+
+COLUMNAS_CONDUCTA = ["Permiso CRE", "Movimientos", "Ultimo", "Dias_sin_mover",
+                     "Vecinos", "Dias_evaluados", "Inicia", "Sigue"]
+
+
+def escribir_conducta(ruta_mov, ruta_catalogo, ruta_salida, radio_km=5.0, ventana=2):
+    """
+    Resumen de conducta de precio por estacion, derivado de movimientos.csv.
+
+    POR QUE ES UN DERIVADO Y NO movimientos.csv DIRECTO
+    ----------------------------------------------------
+    movimientos.csv pesa 1.26 MB y crece ~84 KB al dia: en un ano serian 30 MB
+    que el navegador bajaria en cada carga, y eso rompe la ligereza de la PWA,
+    que es justo lo que distingue a este producto. Este resumen tiene una fila
+    por estacion QUE SE HA MOVIDO (4,016 hoy, no 14,944) y pesa ~180 KB: no
+    crece con los dias, crece con las estaciones que participan.
+
+    QUE MIDE, Y QUE NO
+    ------------------
+    La fuente es DIARIA: no se puede saber quien movio primero dentro del
+    mismo dia, y no se finge que si.
+
+      Inicia: movio un dia valido SIN que ningun vecino dentro del radio
+              hubiera movido en los `ventana` dias previos.
+      Sigue : movio cuando al menos un vecino ya se habia movido.
+
+    Mutuamente excluyentes; suman Dias_evaluados. Una primera version contaba
+    "lidera" como "algun vecino movio despues" y se saturaba: en un radio con
+    100 vecinos siempre hay alguien moviendose, asi que toda estacion salia
+    lider y seguidor a la vez. Esa metrica no medía nada y se descarto.
+
+    QUE DIAS SE EXCLUYEN
+    --------------------
+    1. Los que no tienen el dia anterior registrado: un dia que sigue a un
+       hueco acumula los cambios del hueco. El 7 de octubre de 2026 marco
+       1,521 estaciones porque faltaban del 3 al 6. Mismo criterio que
+       patronCompetencia() y calcularDinamica() en el tablero.
+    2. Los que superan 3 veces la mediana de estaciones en movimiento: eso es
+       recuperacion de datos o un cambio fiscal nacional, no conducta local.
+       El 13 de octubre de 2026 marco 2,682 contra una mediana de 503.
+    """
+    if not ruta_mov or not os.path.exists(ruta_mov):
+        return None
+    if not ruta_catalogo or not os.path.exists(ruta_catalogo):
+        return None
+
+    coords = {}
+    with io.open(ruta_catalogo, encoding="utf-8-sig", newline="") as fh:
+        for r in csv.DictReader(fh):
+            try:
+                la = float(r.get("Lat") or "")
+                lo = float(r.get("Lon") or "")
+            except (TypeError, ValueError):
+                continue
+            # Caja envolvente de Mexico, igual que el saneamiento del tablero.
+            if 14.0 <= la <= 33.0 and -118.5 <= lo <= -86.0:
+                coords[(r.get("Permiso CRE") or "").strip()] = (la, lo)
+    if not coords:
+        return None
+
+    with io.open(ruta_mov, encoding="utf-8-sig", newline="") as fh:
+        filas = list(csv.DictReader(fh))
+    if not filas:
+        return None
+
+    porfecha, movs = {}, {}
+    for r in filas:
+        f = (r.get("Fecha") or "").strip()
+        p = (r.get("Permiso CRE") or "").strip()
+        if not f or not p:
+            continue
+        porfecha.setdefault(f, set()).add(p)
+        movs.setdefault(p, set()).add(f)
+    fechas = sorted(porfecha)
+    if len(fechas) < 2:
+        return None
+
+    def dia(t):
+        a, b, c = t.split("-")
+        return datetime.date(int(a), int(b), int(c))
+
+    comparables, saltadas = [], []
+    for i, f in enumerate(fechas):
+        if i == 0 or (dia(f) - dia(fechas[i-1])).days != 1:
+            saltadas.append(f)
+        else:
+            comparables.append(f)
+    if not comparables:
+        return None
+
+    cuentas = sorted(len(porfecha[f]) for f in comparables)
+    mediana = cuentas[len(cuentas)//2]
+    validas = set(f for f in comparables if len(porfecha[f]) <= mediana*3.0)
+    masivas = [f for f in comparables if f not in validas]
+    if not validas:
+        return None
+
+    paso = radio_km / 111.0
+    rej = {}
+    for p, (la, lo) in coords.items():
+        rej.setdefault((int(la//paso), int(lo//paso)), []).append(p)
+
+    def cercanos(p):
+        la, lo = coords[p]
+        ci, cj = int(la//paso), int(lo//paso)
+        k = math.cos(la*math.pi/180.0)
+        out = []
+        for i in range(ci-1, ci+2):
+            for j in range(cj-1, cj+2):
+                for q in rej.get((i, j), ()):
+                    if q == p:
+                        continue
+                    lb, lb2 = coords[q]
+                    dx = (lb2-lo)*k*111.32
+                    dy = (lb-la)*110.57
+                    if dx*dx + dy*dy <= radio_km*radio_km:
+                        out.append(q)
+        return out
+
+    corte = dia(fechas[-1])
+    salida = []
+    for p, fs in movs.items():
+        if p not in coords:
+            continue
+        vec = set(cercanos(p))
+        inicia = sigue = evaluados = 0
+        if vec:
+            for f in fs:
+                if f not in validas:
+                    continue
+                evaluados += 1
+                o = dia(f).toordinal()
+                antes = set()
+                for k in range(1, ventana+1):
+                    antes |= porfecha.get(
+                        datetime.date.fromordinal(o-k).isoformat(), set())
+                if vec & antes:
+                    sigue += 1
+                else:
+                    inicia += 1
+        uf = max(fs)
+        salida.append({"Permiso CRE": p, "Movimientos": len(fs), "Ultimo": uf,
+                       "Dias_sin_mover": (corte - dia(uf)).days,
+                       "Vecinos": len(vec), "Dias_evaluados": evaluados,
+                       "Inicia": inicia, "Sigue": sigue})
+
+    salida.sort(key=lambda r: (-r["Inicia"], r["Sigue"]))
+    with io.open(ruta_salida, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=COLUMNAS_CONDUCTA,
+                           lineterminator="\n", extrasaction="ignore")
+        w.writeheader()
+        for r in salida:
+            w.writerow(r)
+    return {"filas": len(salida), "fechas": len(fechas),
+            "comparables": len(comparables), "validas": len(validas),
+            "saltadas": len(saltadas), "masivas": len(masivas),
+            "mediana": mediana, "radio": radio_km}
 
 
 def escribir_historico(filas, ruta, fecha, conservar):
@@ -1044,6 +1205,10 @@ def main():
                     help="Bitácora de cambios de precio por estación (quién movió y cuánto)")
     ap.add_argument("--movimientos-conservar", type=int, default=0,
                     help="Alarma de tamaño de la bitácora. 0 = sin tope (por omisión). Nunca borra: la serie es irrecuperable (regla 1.2)")
+    ap.add_argument("--conducta", default="",
+                    help="Resumen por estación de quién inicia y quién sigue el movimiento de precio")
+    ap.add_argument("--conducta-radio", type=float, default=5.0,
+                    help="Radio en km para la conducta (por omisión 5.0)")
     ap.add_argument("--reporte", default="",
                     help="CSV con las métricas estilo Profeco (nacional, por marca y por región)")
     ap.add_argument("--marcas", default="BP,TOTALENERGIES,REPSOL,SHELL,CHEVRON,EXXONMOBIL,GULF,G500,OXXO GAS,ARCO NORTE",
@@ -1104,6 +1269,20 @@ def main():
                       % (mv["nuevos"], mv["contra"], mv["total"]))
             else:
                 print("Movimientos de precio:    sin corte anterior para comparar; la bitácora inicia hoy")
+
+    # La conducta se deriva de la bitácora, así que va después de escribirla.
+    # Nunca tumba la corrida: si algo falta, se omite y se declara.
+    if args.conducta and args.movimientos:
+        cd = escribir_conducta(args.movimientos, args.exportar_catalogo or CATALOGO_POR_OMISION,
+                               args.conducta, args.conducta_radio)
+        if cd:
+            print("Conducta de precio:       %s (%d estaciones · %d de %d fechas usadas · "
+                  "%d con hueco, %d masivas · radio %.1f km)"
+                  % (args.conducta, cd["filas"], cd["validas"], cd["fechas"],
+                     cd["saltadas"], cd["masivas"], cd["radio"]))
+        else:
+            print("Conducta de precio:       omitida (falta bitácora, catálogo o "
+                  "no hay dos cortes consecutivos)")
 
     if args.reporte:
         rep_ = generar_reporte(filas, args.reporte, st["fecha"],
