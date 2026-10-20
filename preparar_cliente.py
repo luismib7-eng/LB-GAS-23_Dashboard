@@ -89,6 +89,73 @@ def filtrar_historico(origen, destino, estados):
     return len(filas), len(conservadas)
 
 
+def limites_app_config(html):
+    """
+    Devuelve (inicio, fin) del bloque `window.APP_CONFIG = {...}` contando
+    llaves, no buscando el literal `};`.
+
+    POR QUE NO SE BUSCA "};"  (error 16 del registro)
+    -------------------------------------------------
+    El logotipo viaja dentro de la configuración como data URI, y las
+    instancias generadas por versiones anteriores cierran el objeto con `}`
+    sin punto y coma —válido en JavaScript por inserción automática—. Una
+    búsqueda del literal se salta ese cierre y se engancha al siguiente `};`
+    del archivo: el de `var CFG = window.APP_CONFIG || {};`, ya dentro del
+    script de la aplicación. El corte se lleva el final de la configuración y
+    el encabezado del script, y deja dos bloques <script id="app">: la página
+    queda rota.
+
+    Esta corrección ya existía y se perdió al reemplazar el archivo completo.
+    La detectó la auditoría automática el 20 de octubre de 2026.
+
+    Cuenta llaves ignorando cadenas, escapes y comentarios de bloque, y acepta
+    el cierre con o sin punto y coma.
+    """
+    ini = html.find("window.APP_CONFIG")
+    if ini == -1:
+        return (-1, -1)
+    abre = html.find("{", ini)
+    if abre == -1:
+        return (-1, -1)
+
+    nivel = 0
+    i = abre
+    n = len(html)
+    cadena = None          # comilla que abrió la cadena en curso
+    comentario = False
+    while i < n:
+        c = html[i]
+        if comentario:
+            if c == "*" and i + 1 < n and html[i+1] == "/":
+                comentario = False
+                i += 1
+        elif cadena:
+            if c == "\\":
+                i += 1                      # salta el carácter escapado
+            elif c == cadena:
+                cadena = None
+        elif c in "\"'`":
+            cadena = c
+        elif c == "/" and i + 1 < n and html[i+1] == "*":
+            comentario = True
+            i += 1
+        elif c == "{":
+            nivel += 1
+        elif c == "}":
+            nivel -= 1
+            if nivel == 0:
+                fin = i + 1
+                # Se come el punto y coma del cierre si lo hay, y nada más.
+                j = fin
+                while j < n and html[j] in " \t\r\n":
+                    j += 1
+                if j < n and html[j] == ";":
+                    fin = j + 1
+                return (ini, fin)
+        i += 1
+    return (ini, -1)
+
+
 def construir_config(args, permisos, logo):
     js = '''window.APP_CONFIG = {
 
@@ -273,13 +340,13 @@ def main():
     with io.open(ruta_index, encoding="utf-8") as fh:
         html = fh.read()
     bloque = construir_config(args, permisos, logo)
-    ini = html.find("window.APP_CONFIG")
+    ini, fin = limites_app_config(html)
     if ini == -1:
         sys.exit("El index.html de origen no contiene el bloque window.APP_CONFIG.")
-    fin = html.find("};", ini)
     if fin == -1:
-        sys.exit("No se encontró el cierre del bloque window.APP_CONFIG.")
-    html = html[:ini] + bloque + html[fin + 2:]
+        sys.exit("No se encontró el cierre del bloque window.APP_CONFIG "
+                 "(llaves desbalanceadas).")
+    html = html[:ini] + bloque + html[fin:]
     with io.open(ruta_index, "w", encoding="utf-8") as fh:
         fh.write(html)
 

@@ -2,13 +2,25 @@
 
 **Servicio Bautista · Análisis de Precios al Público (SENER / CNE / SAT)**
 
-Tablero web para monitorear precios de gasolina Regular, Premium y Diésel por estación de
-servicio. Lee los datos en vivo desde una hoja de Google Sheets publicada como CSV y se
-despliega como sitio estático en GitHub Pages.
+> **Nota de revisión — 20 de octubre de 2026.** Hasta esta fecha el README
+> describía una arquitectura que ya no existe: tres archivos sueltos de código
+> y estilos, ingesta por hoja de cálculo con secuencia de comandos, agrupación
+> por marca y un motor de inferencia de ubicación. **Nada de eso sigue vigente.**
+> Hoy la aplicación es un `index.html` consolidado, la ingesta es por XML de la
+> CNE con GitHub Actions, la agrupación es por grupo operador y el motor de
+> inferencia se retiró. Si leíste la versión anterior, esto cambió.
+>
+> Esa documentación vencida costó dos auditorías externas que reportaron
+> defectos inexistentes. Si un cambio toca la arquitectura, el README se
+> actualiza en el mismo commit.
 
-**Fuente:** Valores estimados por la SENER con información de la CRE/CNE y el SAT.
-El precio al público es un promedio de los precios registrados durante el periodo de referencia.
+Tablero web para monitorear precios de gasolina Regular, Premium y Diésel por
+estación de servicio. Lee el padrón público de la Comisión Nacional de Energía,
+lo procesa con un ETL en Python que corre a diario por GitHub Actions, y se
+publica como sitio estático en GitHub Pages.
 
+**Fuente:** padrón público de precios al público de la CNE. El precio mostrado
+es el que el permisionario reportó en el corte del día.
 ---
 
 ## 1. Fuente oficial: el XML de la CNE
@@ -67,19 +79,25 @@ El tablero recorre las fuentes en orden y se queda con la primera que responda. 
 —red caída, hoja despublicada— pasa sola a la siguiente sin dejar la pantalla en blanco, y el
 indicador del encabezado cambia a **Respaldo local** para que la degradación sea visible.
 
-| Orden | Variable en `config.js` | Modalidad | Construye historia |
+> **Vigente hoy: la fila 4.** `SHEET_CSV_URL`, `CSV_URL` y `XML_URL` quedaron en
+> cadena vacía; el tablero se alimenta de `fallback.csv`, que el workflow diario
+> regenera con el XML de la CNE. Las tres primeras filas se conservan porque el
+> mecanismo de degradación sigue existiendo, no porque se usen.
+
+| Orden | Variable en `window.APP_CONFIG` | Modalidad | Construye historia |
 |---|---|---|---|
-| 1 | `SHEET_CSV_URL` | **Cloud (primaria).** Google Sheets alimentado a diario por `AppsScript.gs` | Sí |
+| 1 | `SHEET_CSV_URL` | *(retirada)* Hoja de cálculo alimentada por una secuencia de comandos | Sí |
 | 2 | `CSV_URL` | CSV remoto ya procesado (GitHub Actions u otro servidor) | Solo si acumulas periodos |
 | 3 | `XML_URL` | XML oficial alojado en el repositorio, interpretado por el navegador | No |
 | 4 | `FALLBACK_CSV` | **Local (secundaria).** `fallback.csv` generado por `xml_a_csv.py` | Solo si acumulas periodos |
 
-La modalidad Cloud es la recomendada: es la única que acumula la serie histórica sin intervención y
-la única inmune al bloqueo CORS. La local sirve como respaldo permanente y para trabajar sin Google.
+**La modalidad vigente es la local**, alimentada por GitHub Actions: el runner
+descarga el XML, corre el ETL y commitea el resultado, así que la serie se
+acumula sin intervención y sin depender de un servicio externo.
 
 > **El navegador no puede leer el XML directamente del servidor de la CNE.** El portal no envía la
 > cabecera `Access-Control-Allow-Origin`, así que apuntar `XML_URL` a `https://www.cne.gob.mx/...`
-> falla por CORS. Apps Script no tiene ese problema porque la descarga la hace el servidor de Google.
+> falla por CORS. Por eso la descarga la hace el runner de GitHub Actions, no el navegador.
 
 ### Convertir el XML con `xml_a_csv.py`
 
@@ -110,7 +128,18 @@ por Profeco para el periodo, lo que confirma que el criterio de limpieza es el a
 
 ---
 
-## 2. Estructura de la hoja de cálculo
+
+> ## ⚠ Secciones 2 y 3 — HISTÓRICAS, ya no describen el producto
+>
+> Todo lo que sigue hasta la sección «Automatizar sin Google: GitHub Actions»
+> documenta la ingesta por hoja de cálculo y secuencia de comandos, que se
+> **retiró**. Se conserva únicamente para entender instancias antiguas.
+>
+> **La ingesta vigente** es `.github/workflows/actualizar-datos.yml`: el runner
+> descarga el XML de la CNE, corre `xml_a_csv.py` y commitea el resultado, a
+> diario a las 13:00 UTC (14:00 los lunes). No hay hoja de cálculo en el camino.
+
+## 2. Estructura de la hoja de cálculo *(histórico — retirado)*
 
 La primera fila debe contener los encabezados. Solo `Estacion` (o `Permiso CRE`) y al menos una
 columna de precio son obligatorias; las demás enriquecen el tablero.
@@ -150,7 +179,13 @@ ya trae los encabezados exactos y un periodo completo. El catálogo de estacione
 
 ---
 
-## 3. Publicar la hoja como CSV y automatizar la ingesta
+## 3. Ingesta por hoja de cálculo *(histórico — retirado)*
+
+> **Esta sección describe la ingesta por Google Sheets y Apps Script, que
+> se retiró.** Se conserva solo para entender instancias antiguas. La
+> ingesta vigente es el workflow `.github/workflows/actualizar-datos.yml`,
+> que descarga el XML de la CNE y corre `xml_a_csv.py` a diario a las
+> 13:00 UTC (14:00 los lunes).
 
 1. Abre tu hoja en Google Sheets.
 2. **Archivo → Compartir → Publicar en la web**.
@@ -162,7 +197,7 @@ ya trae los encabezados exactos y un periodo completo. El catálogo de estacione
    https://docs.google.com/spreadsheets/d/e/2PACX-1vQ.../pub?gid=0&single=true&output=csv
    ```
 
-6. Pega esa URL en `config.js`:
+6. Pega esa URL en `window.APP_CONFIG` (dentro de `index.html`):
 
    ```js
    SHEET_CSV_URL: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ.../pub?gid=0&single=true&output=csv",
@@ -174,7 +209,7 @@ publicado; el botón **Actualizar** fuerza una nueva lectura del lado del navega
 
 Si dejas `SHEET_CSV_URL` vacía, el tablero usa `XML_URL` y, en su defecto, `FALLBACK_CSV`.
 
-### Automatizar la ingesta del XML (Apps Script)
+### Automatizar la ingesta del XML *(histórico — retirado)*
 
 `AppsScript.gs` mantiene la hoja al día sin intervención:
 
@@ -216,11 +251,11 @@ publica `fallback.csv` con un commit diario.
 
 ---
 
-## 4. Otros ajustes en `config.js`
+## 4. Otros ajustes en `window.APP_CONFIG` (dentro de `index.html`)
 
 | Clave | Qué controla |
 |---|---|
-| `SHEET_CSV_URL` | CSV publicado de Google Sheets. Tiene prioridad sobre las demás fuentes. |
+| `SHEET_CSV_URL` | *(retirada)* Quedó en cadena vacía; ya no se usa. |
 | `XML_URL` | XML oficial (usa una copia en el repositorio; ver la advertencia de CORS). |
 | `CSV_URL` | CSV remoto ya procesado (por ejemplo el que publica GitHub Actions). |
 | `FALLBACK_CSV` | Respaldo local dentro del repositorio. Acepta CSV o XML. |
@@ -353,7 +388,7 @@ decoración.
 ### Marcar tus sucursales
 
 Las estaciones propias aparecen en el explorador con el distintivo **Sucursal propia**, realce azul
-y filo lateral. Se declaran en `config.js`:
+y filo lateral. Se declaran en `window.APP_CONFIG` (dentro de `index.html`):
 
 ```javascript
 MIS_ESTACIONES: {
@@ -395,10 +430,12 @@ Lo inferido se marca con **≈** en la columna Ubicación y se declara como *Inf
 en la exportación. **La ruta confiable es llenar `Estado` y `Municipio` en
 `catalogo_estaciones.csv`**, que además activa la comparativa por municipio.
 
-Para ampliar la cobertura del motor, agrega entradas al diccionario `MUNICIPIOS` en `app.js`
+> **Retirado.** El motor de inferencia de ubicación y su diccionario `MUNICIPIOS` se
+> eliminaron (error 9 del registro). La ubicación viene de las coordenadas del
+> catálogo de la CNE. Lo que sigue describe el comportamiento anterior
 (clave en minúsculas y sin acentos, valor el estado).
 
-`config.js` incluye `ESTADO_POR_DEFECTO` para asignar un estado a todo lo que quede sin ubicación.
+`window.APP_CONFIG` (dentro de `index.html`) incluye `ESTADO_POR_DEFECTO` para asignar un estado a todo lo que quede sin ubicación.
 Viene vacío a propósito: si lo llenas, las ~13,650 estaciones sin dato caen bajo ese estado y el
 "promedio estatal" contra el que se mide el semáforo deja de ser el de tu plaza para volverse el
 nacional disfrazado. Lo asignado se exporta marcado como *Asignado por omisión*.
@@ -408,7 +445,7 @@ nacional disfrazado. Lo asignado se exporta marcado como *Asignado por omisión*
 El promedio contra el que se mide cada estación se elige en este orden, quedándose en el primero que
 tenga al menos dos estaciones:
 
-1. **Radio** — cuando el catálogo trae `Lat` y `Lon`. `RADIO_KM` en `config.js` (5 km por omisión;
+1. **Radio** — cuando el catálogo trae `Lat` y `Lon`. `RADIO_KM` en `window.APP_CONFIG` (dentro de `index.html`) (5 km por omisión;
    3–5 en zona urbana, 15–25 en carretera). Es la definición más fiel de competencia: quien está a
    pocos kilómetros, sin importar el límite municipal. Se indexa en una rejilla espacial para no
    comparar cada estación contra las 13,800 restantes.
@@ -450,7 +487,7 @@ está confirmado, el panel avisa que la comparación se hizo contra un universo 
 
 ### Competencia directa por marca
 
-Tarjetas con el precio promedio de las marcas vigiladas (`MARCAS_COMPETENCIA` en `config.js`) dentro
+Tarjetas con el precio promedio por **grupo operador (razón social)** dentro
 de la selección activa, ordenadas de más barata a más cara y contrastadas contra el promedio de la
 zona filtrada. La marca se reconoce por la columna `Marca` del catálogo y, en su defecto, por la
 razón social, **siempre por palabra completa**.
@@ -475,7 +512,7 @@ los acentos, y el nombre del archivo recoge producto, periodo y filtros.
 
 El botón **★ Mis estaciones** del encabezado abre un buscador sobre el padrón completo: eliges hasta
 cinco permisos y la selección se guarda en `localStorage`, así que persiste en ese navegador sin
-tocar código. `MIS_ESTACIONES.permisos` en `config.js` funciona como semilla inicial; a partir de la
+tocar código. `MIS_ESTACIONES.permisos` en `window.APP_CONFIG` (dentro de `index.html`) funciona como semilla inicial; a partir de la
 primera selección manda lo guardado.
 
 Con el interruptor **Solo mis estaciones** activo aparece un resumen comparativo: precio, promedio de
@@ -659,7 +696,7 @@ python3 xml_a_csv.py precios_del_dia.xml --catalogo catalogo_estaciones.csv \
         --salida historico.csv --acumular
 ```
 
-y apunta `FALLBACK_CSV: "historico.csv"` en `config.js`.
+y apunta `FALLBACK_CSV: "historico.csv"` en `window.APP_CONFIG` (dentro de `index.html`).
 
 ### Primer despliegue
 
@@ -710,7 +747,7 @@ suficientes explica qué falta y dónde capturarlo, en lugar de mostrar un cero 
 
 | Hallazgo | Resolución |
 |---|---|
-| Alias cortos de permiso en `AppsScript.gs` descartaban el catálogo en silencio | Ampliados para cubrir lo mismo que `FIELD_ALIASES` de `app.js` |
+| Alias cortos de permiso en `AppsScript.gs` descartaban el catálogo en silencio | Ampliados para cubrir lo mismo que `FIELD_ALIASES` de el bloque `<script id="app">` de `index.html` |
 | `periodoYaCargado_` solo revisaba las últimas 20,000 filas | Revisa la columna completa: reordenar la hoja ya no puede duplicar un corte |
 | `computeMercado()` reconstruía la rejilla espacial en cada cambio de vista | Memorizado por firma (periodo + filas + radio): los filtros cosméticos ya no lo recalculan |
 | El interruptor "Solo mis estaciones" no respondía sin estaciones configuradas | Ahora abre el gestor con ese clic |
@@ -897,10 +934,10 @@ Lee el resumen de la corrida y ubica el caso:
 | `HTTP 404` | Cambió la ruta del endpoint | Confirmar la ruta vigente en el portal y ponerla en la variable `URL_XML` |
 | Falla antes de imprimir nada | Error de permisos o de sintaxis del flujo | Revisar *Workflow permissions* en Settings |
 
-**Plan B (Apps Script).** `AppsScript.gs` hace la misma ingesta desde los servidores de Google, con
+**Plan B *(retirado)*.** La ingesta por secuencia de comandos en los servidores de la hoja de cálculo se descontinuó; el runner de GitHub Actions la sustituyó por completo.
 otro rango de direcciones y otra ruta de salida. Si el origen bloquea a GitHub pero no a Google, esa
 vía sigue funcionando sin cambiar el tablero: basta con publicar la hoja como CSV y poner la URL en
-`SHEET_CSV_URL` dentro de `config.js`.
+`SHEET_CSV_URL` dentro de `window.APP_CONFIG` (dentro de `index.html`).
 
 **Plan C (equipo local).** El mismo comando del flujo, corrido desde tu equipo y con `git push`. Es
 la vía más simple si el origen solo acepta direcciones residenciales mexicanas.
@@ -916,3 +953,44 @@ git add fallback.csv historico.csv reporte_mercado.csv && git commit -m "Precios
 
 Las tres vías escriben exactamente los mismos archivos, así que puedes cambiar de una a otra sin
 tocar el tablero.
+
+
+---
+
+## Arquitectura vigente (20 de octubre de 2026)
+
+| Pieza | Qué es |
+|---|---|
+| `index.html` | La aplicación completa: CSS, Leaflet 1.9.4, Chart.js 4.4.1, PapaParse 5.4.1, configuración, lógica y logotipo embebidos. Vanilla JS, sin framework ni paso de compilación. Abre como archivo estático |
+| `sw.js` | Service worker: cascarón con *stale-while-revalidate*, datos con *network-first*, mosaicos con *cache-first* y tope de 300 piezas |
+| `xml_a_csv.py` | ETL: ingesta del XML de la CNE, depuración, cruce por `place_id`, percentiles, bitácora de movimientos y resumen de conducta |
+| `preparar_cliente.py` | Genera cada instancia de cliente inyectando `window.APP_CONFIG` |
+| `preparar_subcuentas.py` | Subcuentas de un cliente; llama al anterior |
+| `historico_a_xlsx.py` | Libro de Excel de tres hojas |
+| `construir_denue_csv.py` | Cruce con el DENUE del INEGI por cercanía geográfica |
+| `auditoria.py` | **Auditoría estricta del repositorio.** Corre en el flujo diario y los lunes |
+
+### Archivos de datos
+
+| Archivo | Qué guarda | ¿Se puede regenerar? |
+|---|---|---|
+| `fallback.csv` | Ventana móvil de 7 cortes del padrón | Sí, en cada corrida |
+| `catalogo_estaciones.csv` | Identidad y coordenadas | Sí |
+| `denue.csv` | Nombre comercial, domicilio y personal ocupado | Sí |
+| `reporte_mercado.csv` | Métricas por ámbito con percentiles | Sí |
+| `conducta.csv` | Quién inicia y quién reacciona, por estación | Sí |
+| **`historico.csv`** | Promedios diarios por ámbito desde el 19 ago 2026 | **NO. Irrecuperable** |
+| **`movimientos.csv`** | Cambios de precio por estación desde el 1 oct 2026 | **NO. Irrecuperable** |
+
+Los dos últimos **se acumulan**: el ETL lee lo que existe y le suma el día. La
+CNE no republica series históricas, así que **ningún paquete de entrega los
+incluye**: un ZIP que los lleve congelados los regresa al pasado. Ya ocurrió
+(error 13 del registro).
+
+### Antes de tocar el código
+
+1. Lee `03-ERRORES-RESUELTOS.md` de la base de conocimiento, completo.
+2. Verifica que las funciones nombradas en sus soluciones **existan** en el
+   `index.html` publicado. Una corrección documentada pero ausente del código
+   es una corrección perdida, y así volvió el error 15.
+3. Corre `python3 auditoria.py .` antes y después de tu cambio.

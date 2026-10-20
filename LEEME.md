@@ -658,3 +658,157 @@ que reportan unos días y otros no, así que la unión es un poco mayor que
 cualquier corte individual. Es la semántica correcta.
 
 Cero errores de JavaScript en los dos modos.
+
+---
+---
+
+# v22 · Auditoría automática, y dos correcciones que estaban perdidas
+
+## 1. `auditoria.py` — el centinela
+
+Un script que corre contra el repositorio y verifica **que las correcciones
+nombradas en el registro de errores sigan existiendo en el código.** Eso es
+exactamente lo que no existía cuando el error 15 volvió al sitio.
+
+Corre en dos lugares:
+
+- **En el flujo diario**, como paso con `continue-on-error: true`. Nunca tumba
+  el corte —la serie sigue acumulando pase lo que pase— pero deja el hallazgo
+  en el log del día en vez de esperar al lunes.
+- **Los lunes a las 8:52**, en la tarea programada, que ahora audita primero y
+  solo propone mejoras si no hubo críticos. No se construye encima de algo
+  roto.
+
+### Qué audita
+
+| Bloque | Qué verifica |
+|---|---|
+| **Centinela** | 18 marcas de código que deben existir y 8 patrones prohibidos, cada uno atado al error que lo originó |
+| Estructura | Árbol plano en la raíz, workflow presente, sin carpeta envolvente (error 2) |
+| Series | Que el histórico siga arrancando el 19 de agosto y la bitácora el 1 de octubre, sin huecos, al día (errores 13 y 3) |
+| Padrón | Corte reciente, cortes consecutivos, place_id únicos, coordenadas en rango, y **huella estadística contra datos sintéticos** (error 1) |
+| Código | Llamadas huérfanas (error 9) y README a la deriva (error 17) |
+| Clientes | Un solo `<script id="app">` por instancia y que tengan el código al día (errores 16 y 18) |
+| Flujo | Que no recorte series y que **todo archivo que el ETL genera esté en el `git add`** |
+
+Sale con código 1 si hay críticos.
+
+### Dos falsos positivos que maté antes de entregarla
+
+La primera versión marcó el padrón real como **sintético**: alertaba porque
+había 99 decimales distintos. Con casi 14,000 estaciones eso es normal; lo que
+delata un archivo generado al azar es que los precios **no** se amontonen en
+.99, .49 y .00 —el padrón real tiene 69.8% ahí—. Y reportó **434 llamadas
+huérfanas** que eran métodos internos de Chart.js.
+
+Las dos se corrigieron. **Una auditoría que grita lobo se deja de leer, y eso
+es peor que no tenerla.**
+
+## 2. Lo que la auditoría encontró en su primera corrida
+
+Apuntada al repositorio publicado, además del error 18 que ya conocíamos,
+encontró **una segunda corrección perdida**:
+
+> `preparar_cliente.py` línea 279: `fin = html.find("};", ini)`
+
+Es el literal exacto del **error 16**, el que dejó los dos `index.html` de
+cliente con el bloque `<script id="app">` duplicado y la página rota. La
+solución documentada —`limites_app_config()`, que delimita contando llaves—
+**no estaba en el archivo.** Y como mis entregas v19 a v21 partieron de ese
+archivo, el defecto viajó en ellas.
+
+Está restaurada y probada contra cinco casos: cierre con punto y coma, cierre
+sin él —el de las instancias viejas—, llave dentro de una cadena, llave dentro
+de un comentario de bloque, y comilla escapada. Los cinco pasan, y delimita
+correctamente el bloque real de 132,880 bytes con el logotipo embebido.
+
+**También levantó una falsa alarma sobre `sw.js`** que vale la pena anotar: mi
+marca de búsqueda tenía los puntos sin escapar y el arreglo sí estaba. Por eso
+las marcas del centinela se verifican contra el archivo antes de confiar en
+ellas.
+
+## Al subir este paquete
+
+```bash
+python3 preparar_cliente.py …    # propaga el código a las 4 instancias
+```
+
+La auditoría marca esas 4 como ALERTA hasta que se regeneren. Y el README
+sigue describiendo `app.js`, `styles.css` y Google Sheets, que no existen desde
+hace meses: dos auditorías externas ya reportaron defectos inexistentes por
+leerlo.
+
+---
+---
+
+# v23 · La auditoría ahora abre el sitio y comprueba los números
+
+v22 verificaba que los parches existieran. **No comprobaba que el producto
+funcionara.** Un tablero puede pasar todos los centinelas y mostrar una cifra
+equivocada, que es justo el daño que importa: el cliente puede descargar el
+mismo padrón y comprobarlo.
+
+## Cuatro bloques nuevos
+
+**FUNCIONAL.** Sirve el repositorio, lo abre en Chromium con Playwright y
+**recalcula en Python las cifras que el navegador pintó**. Si no coinciden, es
+crítico. Verifica además: cero errores de JavaScript, cero 404, que ningún
+panel quede vacío, que cambiar de tema no rompa las gráficas (error 5), que el
+aviso de privacidad abra, y **que el radio dé lo mismo con un corte que con
+«Todos los periodos»** mientras la dinámica sigue viendo varios.
+
+Donde no haya Playwright se declara omitido en vez de fingir que pasó. Con
+`--sin-navegador` se salta a propósito.
+
+**SINTAXIS.** `node --check` sobre cada bloque de JavaScript del `index.html`
+raíz **y de cada instancia de cliente**; `py_compile` sobre **los seis**
+scripts de Python del repositorio —antes solo miraba los dos que yo tocaba—;
+YAML del workflow; JSON del manifest con sus iconos.
+
+**REFERENCIAS.** Que todo archivo declarado en la configuración exista, y que
+los 7 archivos del cascarón del service worker existan. Si uno falta, la
+instalación del worker falla entera.
+
+**COHERENCIA.** Que los permisos de `conducta.csv` existan en el catálogo, que
+el histórico y el reporte de mercado compartan fechas —los escribe el mismo
+corte: si uno se quedó atrás, una corrida falló a medias— y que el cruce por
+`place_id` siga resolviendo.
+
+## Probada rompiendo el tablero a propósito
+
+Una auditoría que siempre dice OK no sirve. Se le dieron cinco sabotajes:
+
+| Sabotaje | Qué la atrapó |
+|---|---|
+| `index.html` de v20, con el error 18 vivo | Centinela (3 marcas) **y Funcional: «el radio cambia con el selector: 70 contra 490»** |
+| Error de sintaxis en el JavaScript | Sintaxis |
+| `CONDUCTA_CSV` apuntando a un archivo inexistente | Referencias |
+| `--historico-conservar 120` en el workflow | Centinela y Flujo |
+| Borrar 27 fechas del histórico | Series |
+
+**Lo importante es la segunda columna de la primera fila.** El bloque funcional
+detectó el síntoma —70 contra 490— sin saber nada del arreglo. Esa es la capa
+que atrapa un error **nuevo**, no solo los ya conocidos. Era exactamente lo que
+faltaba.
+
+## Dos falsos positivos más, corregidos
+
+La comprobación del README marcaba como defecto la línea *"No hay styles.css,
+app.js ni config.js: se consolidaron aquí"* — que es documentación **correcta**.
+Ahora la revisión es **consciente de secciones**: un encabezado marcado como
+histórico exime a todo su cuerpo. Castigar la documentación honesta empuja a
+borrarla.
+
+Y las instancias de cliente con código anterior pasaron de ALERTA a AVISO: el
+flujo diario las regenera solo. Es alerta únicamente si siguen igual pasados
+dos días, porque ahí el paso está fallando.
+
+## README reescrito
+
+Las secciones 2 y 3 —ingesta por hoja de cálculo— quedaron marcadas como
+históricas con un recuadro al inicio, la tabla de fuentes declara que la
+vigente es la local, y se agregó al final la arquitectura real: los 8 scripts,
+los 7 archivos de datos con **cuáles son irrecuperables**, y las tres cosas que
+hay que hacer antes de tocar el código.
+
+**Resultado contra este paquete: 0 críticos, 23 verificaciones en orden.**

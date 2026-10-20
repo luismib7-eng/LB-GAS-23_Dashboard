@@ -193,6 +193,18 @@ jobs:
           ls -1 clientes/
           [ -d clientes/enerso/clientes ] && ls -1 clientes/enerso/clientes/ || true
 
+      - name: Auditoría estricta del repositorio
+        continue-on-error: true
+        run: |
+          # Nunca tumba el corte: `continue-on-error` deja que la serie siga
+          # acumulando aunque la auditoría encuentre algo. Lo que hace es
+          # dejar el hallazgo en el log del día en vez de esperar al lunes.
+          if [ -f auditoria.py ]; then
+            python3 auditoria.py . || echo "::warning::La auditoría encontró hallazgos CRÍTICOS. Revisa el log."
+          else
+            echo "::warning::Falta auditoria.py en la raíz: una entrega lo borró."
+          fi
+
       - name: Publicar si hubo cambios
         if: steps.validacion.outputs.omitir == '0'
         run: |
