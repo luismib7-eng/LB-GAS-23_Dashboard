@@ -3834,6 +3834,39 @@ window.APP_CONFIG = {
     return true;
   }
 
+  /* ---------------------------------------------------------
+     Una fila por ESTACIÓN, no por registro
+
+     periodRows() devuelve todos los registros cuando no hay periodo
+     seleccionado, y la ventana del padrón conserva 7 cortes: la misma
+     estación aparece 7 veces. Todo panel que cuente estaciones —el radio,
+     la tabla, el mapa, los KPI— tiene que colapsar primero, o multiplica el
+     parque por el número de cortes.
+
+     Esto ya pasó dos veces en este proyecto: una en el panel de grupo
+     operador y otra aquí. Aquí el daño es peor, porque el panel de
+     competidores directos es el que se abre para decidir precio: con
+     "Todos los periodos" marcaba 266 competidores donde hay 38.
+
+     Se conserva el registro del corte MÁS RECIENTE de cada estación: es el
+     precio vigente. Las funciones que sí necesitan los varios cortes —la
+     dinámica y el patrón semanal— siguen recibiendo el conjunto completo.
+     --------------------------------------------------------- */
+  function unicas(filas) {
+    if (!filas || filas.length < 2) return filas || [];
+    var vistas = {}, out = [];
+    for (var i = 0; i < filas.length; i++) {
+      var r = filas[i], k = permitKey(r.permiso) || ("#" + i);
+      var prev = vistas[k];
+      if (prev === undefined) { vistas[k] = out.length; out.push(r); continue; }
+      /* Se queda la fecha más reciente. Una fila sin fecha no desplaza a
+         una que sí la tiene. */
+      var a = out[prev].fecha || "", b = r.fecha || "";
+      if (b > a) out[prev] = r;
+    }
+    return out;
+  }
+
   function scoped() {
     return periodRows().filter(function (r) {
       if (!coincideGeo(r)) return false;
@@ -3867,7 +3900,11 @@ window.APP_CONFIG = {
     RADIO_KM = Number(CFG.RADIO_KM || 0);
     rejilla = null;
     if (!RADIO_KM) return;
-    var conCoords = rows.filter(function (r) { return r.lat !== null && r.lon !== null; });
+    /* Sobre estaciones únicas: si la rejilla se llena con los 7 cortes, cada
+       vecino sale 7 veces y el radio reporta 7 veces los competidores que
+       hay. Esto corrige desde un solo lugar vecinos(), vecindario() y
+       referenciaLocal(). */
+    var conCoords = unicas(rows).filter(function (r) { return r.lat !== null && r.lon !== null; });
     if (conCoords.length < 2) return;
 
     /* Celdas de RADIO_KM de alto. En longitud un grado mide menos conforme
@@ -4834,27 +4871,33 @@ window.APP_CONFIG = {
   function render() {
     computeMercado();
     state.dimension = detectDimension();
+    /* `rows` son REGISTROS: con "Todos los periodos" trae los 7 cortes.
+       `est` es una fila por ESTACIÓN, con su corte más reciente.
+       Todo lo que cuenta estaciones recibe `est`. Solo renderProfeco sigue
+       recibiendo `rows`, porque la vista de dinámica mide el movimiento
+       ENTRE cortes y sin ellos no tendría qué medir. */
     var rows = scoped();
-    renderKpis(rows);
-    renderExtremes(rows);
+    var est = unicas(rows);
+    renderKpis(est);
+    renderExtremes(est);
     renderPanorama();
     renderPlazas();
-    renderRail(rows);
+    renderRail(est);
     renderTrend();
-    renderCompare(rows);
-    renderHist(rows);
-    renderTable(rows);
-    renderConducta(rows);
-    renderCumplimientoTope(rows);
-    renderCompetencia(rows);
+    renderCompare(est);
+    renderHist(est);
+    renderTable(est);
+    renderConducta(est);
+    renderCumplimientoTope(est);
+    renderCompetencia(est);
     renderVecindario();
     renderMisEstaciones();
     renderBriefing();
     if (mapaListo) {
-      if (!mapaEncuadrado) { encuadrarMapa(rows); mapaEncuadrado = true; }
-      pintarMapa(rows);
+      if (!mapaEncuadrado) { encuadrarMapa(est); mapaEncuadrado = true; }
+      pintarMapa(est);
     }
-    renderProfeco(rows);
+    renderProfeco(rows);   /* a propósito con los varios cortes: ver arriba */
     renderSimulador();
     resumenFiltros();
     setTimeout(marcarScrollables, 0);

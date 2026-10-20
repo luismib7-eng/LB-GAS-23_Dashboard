@@ -569,3 +569,92 @@ Cero errores de JavaScript, cero 404. Los chips, los dos párrafos de lectura y
 el KPI se rindieron contra el padrón real del 19 de octubre y se revisaron en
 pantalla. El tooltip de cada insignia declara la fuente y la advertencia de
 que no es volumen.
+
+---
+---
+
+# v21 · URGENTE · "Todos los periodos" contaba registros como estaciones
+
+**Esta versión corrige un fallo que estaba en el sitio publicado y que un
+anuncio pagado habría amplificado.** Súbela antes de pagar publicidad.
+
+## Qué estaba pasando
+
+Con el selector de PERIODO en **"Todos los periodos"**, la ventana del padrón
+trae 7 cortes, así que cada estación aparecía 7 veces y todo panel que contara
+estaciones multiplicaba el parque por 7:
+
+| Panel | Mostraba | Real |
+|---|---|---|
+| Competidores en 5 km | 266 | **38** |
+| Más baratos / más caros | 35 / 7 | **5 / 1** |
+| Estaciones con precio (riel) | 96,458 | **13,784** |
+| Estaciones listadas (tabla) | 96,971 | **13,858** |
+
+El daño mayor no era el número: era **dónde** estaba. El panel de competidores
+directos es el que un director abre para decidir precio. Ver 266 competidores
+donde hay 38 destruye la credibilidad que un anuncio acaba de comprar.
+
+## Por qué no lo detecté antes, y la lección
+
+Este es el **error 15 del registro de errores resueltos**, y lo primero que
+hay que decir es que **no se reintrodujo: se había perdido del código.**
+
+Las funciones con las que se resolvió en su momento —`corteMercado()`,
+`filasCorteMercado()`, `unidadFilas()`— **no existen en el archivo publicado.**
+Solo sobrevivió `panoramaCorte()`. Es el mismo mecanismo del error 13: una
+entrega completa que reemplaza `index.html` regresa el archivo a un estado
+anterior, y si nadie revisa, la corrección se va en silencio.
+
+Mi parte: las versiones 14 a 20 se construyeron sobre esa línea sin la
+corrección, y **no leí el registro de errores resueltos antes de tocar el
+tablero**, que es justo lo que las instrucciones del proyecto piden hacer al
+terminar un cambio. En v17 corregí este mismo fallo en el panel de grupo
+operador y no busqué los demás paneles que contaban lo mismo. La regla del
+error 15 lo decía con todas sus letras y aun así me faltó aplicarla.
+
+## La corrección
+
+Una sola función nueva, `unicas(filas)`, que colapsa a **una fila por estación
+conservando el corte más reciente** —el precio vigente, que es el que importa
+para decidir—. Se aplica en dos puntos, no en quince:
+
+1. **`construirRejilla()`** la usa para indexar. Eso corrige de un golpe
+   `vecinos()`, `vecindario()` y `referenciaLocal()`, que es la cadena que
+   producía los 266.
+2. **`render()`** separa explícitamente los dos conjuntos:
+
+```javascript
+var rows = scoped();      // REGISTROS: los 7 cortes
+var est  = unicas(rows);  // una fila por ESTACIÓN
+```
+
+y `est` va a los doce paneles que cuentan estaciones. **`renderProfeco(rows)`
+sigue recibiendo el conjunto completo a propósito**, porque la vista de
+dinámica mide el movimiento ENTRE cortes y sin ellos no tendría qué medir.
+
+### Dónde me aparté del arreglo documentado
+
+El registro describe la solución original como "la capa de referencia se
+construye siempre sobre un corte" y la tabla declarando que abarca varios. Yo
+hice que la tabla muestre **estaciones únicas con su precio vigente**, porque
+13,858 estaciones reales son más útiles que 96,969 renglones repetidos, y
+porque así la palabra "estaciones" simplemente es cierta en vez de necesitar
+una aclaración. Queda anotado para que la diferencia sea deliberada y no una
+sorpresa.
+
+## Verificado en los dos modos
+
+```
+UN CORTE (19 oct)          TODOS LOS PERIODOS (7 cortes)
+tabla    13,854 estaciones   13,858 estaciones
+riel     13,780 estaciones   13,784 estaciones
+RADIO    70 competidores     70 competidores     <-- antes 490
+dinámica                     7 cortes · 6 días medidos  <-- intacta
+```
+
+Los 13,858 contra 13,854 no son un error: a lo largo de 7 cortes hay estaciones
+que reportan unos días y otros no, así que la unión es un poco mayor que
+cualquier corte individual. Es la semántica correcta.
+
+Cero errores de JavaScript en los dos modos.
