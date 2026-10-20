@@ -154,6 +154,7 @@ jobs:
                   --acumular --conservar 7 \
                   --historico historico.csv --historico-conservar 0 \
                   --movimientos movimientos.csv --movimientos-conservar 0 \
+                  --conducta conducta.csv --conducta-radio 5 \
                   --reporte reporte_mercado.csv
 
       - name: Generar el histórico en Excel
@@ -197,13 +198,13 @@ jobs:
         run: |
           # No se borra diagnostico.txt aqui: el paso del resumen lo publica.
           rm -f precios_del_dia.xml
-          if git diff --quiet -- fallback.csv historico.csv movimientos.csv reporte_mercado.csv historico.xlsx clientes/; then
+          if git diff --quiet -- fallback.csv historico.csv movimientos.csv conducta.csv reporte_mercado.csv historico.xlsx clientes/; then
             echo "Sin cambios: la fecha ya estaba cargada."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add fallback.csv historico.csv movimientos.csv reporte_mercado.csv historico.xlsx clientes/
+          git add fallback.csv historico.csv movimientos.csv conducta.csv reporte_mercado.csv historico.xlsx clientes/
           git commit -m "Precios $(date -u +%Y-%m-%d)"
           git push
 
