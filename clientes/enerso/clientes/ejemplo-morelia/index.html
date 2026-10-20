@@ -1634,6 +1634,30 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
 .consent__txt{font-size:12px;line-height:1.55;color:var(--muted);flex:1 1 320px;margin:0}
 .consent__acts{display:flex;gap:8px;flex:none}
 @media (min-width:860px){ .consent{left:auto;right:18px;bottom:18px;max-width:560px} }
+
+/* ── Cumplimiento del tope de la Estrategia Nacional ──────────────────
+   Tres estados, no dos. El pacto dice "menor a", asi que el precio
+   EXACTAMENTE en el tope no cumple: va en su propia tarjeta, en ambar,
+   porque es el grupo que cree que cumple y no cumple. */
+.tope{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media (max-width:720px){.tope{grid-template-columns:1fr}}
+.tope__card{background:var(--surface-2,#131F33);border-radius:14px;padding:16px 18px;
+  border-left:4px solid var(--linea,#1C2C47)}
+.tope__card--cumple{border-left-color:#10B981}
+.tope__card--justo{border-left-color:#D8A64A}
+.tope__card--fuera{border-left-color:#E0325B}
+.tope__label{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--texto-tenue,#8A9BB2);margin:0 0 6px}
+.tope__valor{font-family:var(--mono,ui-monospace,monospace);font-size:1.9rem;
+  font-weight:600;margin:0;line-height:1.05}
+.tope__pie{font-size:.82rem;color:var(--texto-tenue,#8A9BB2);margin:6px 0 0}
+.tope__nota{font-size:.82rem;color:var(--texto-tenue,#8A9BB2);margin:14px 0 0;line-height:1.5}
+
+/* Índice de tamaño: insignia discreta, más tenue que la clasificación de
+   precio. Informa el tamaño del competidor sin competir con el dato que
+   manda, que es el precio. */
+.badge--tam{background:rgba(30,58,95,.10);color:var(--texto-tenue,#8A9BB2);
+  font-variant-numeric:tabular-nums;font-weight:500;letter-spacing:.01em}
 </style>
 </head>
 <body>
@@ -1868,7 +1892,27 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
     <p class="map__nota" id="mapNota"></p>
   </section>
 
-  <!-- ══════════════ COMPETENCIA DIRECTA ══════════════ -->
+  <!-- ══════════════ CONDUCTA DE PRECIO ══════════════ -->
+  <section class="panel" id="condPanel" aria-label="Conducta de precio en el radio" hidden>
+    <div class="panel__head">
+      <h2 class="panel__title">Quién marca el precio en tu radio</h2>
+      <p class="panel__sub" id="condNote"></p>
+    </div>
+    <div class="tope" id="condCards"></div>
+    <p class="tope__nota" id="condNota"></p>
+  </section>
+
+  <!-- ══════════════ CUMPLIMIENTO DEL PACTO ══════════════ -->
+    <section class="panel" aria-label="Cumplimiento del tope de la Estrategia Nacional">
+      <div class="panel__head">
+        <h2 class="panel__title">Cumplimiento del tope</h2>
+        <p class="panel__sub" id="topeNote"></p>
+      </div>
+      <div class="tope" id="topeCards"></div>
+      <p class="tope__nota" id="topeNota"></p>
+    </section>
+
+    <!-- ══════════════ COMPETENCIA DIRECTA ══════════════ -->
   <section class="panel" aria-label="Monitoreo de competencia directa">
     <div class="panel__head">
       <h2 class="panel__title">Competencia por grupo operador</h2>
@@ -3228,13 +3272,17 @@ window.APP_CONFIG = {
     /* El DENUE se baja una sola vez y no caduca al ritmo de los precios, así
        que su fallo nunca debe tumbar la carga: si no llega, el tablero sigue
        mostrando la razón social como siempre. */
+    var conUrl = CFG.CONDUCTA_CSV && CFG.CONDUCTA_CSV.trim();
+    var conducta = conUrl
+      ? fetchText(conUrl).then(construirConductaSeguro, function () { return null; })
+      : Promise.resolve(null);
     var denUrl = CFG.DENUE_CSV && CFG.DENUE_CSV.trim();
     var denue = denUrl ? fetchText(denUrl).then(buildDenueSafe, function () { return null; })
                        : Promise.resolve(null);
 
     sirvioCache = false;
-    Promise.all([catalogo, denue])
-      .then(function (par) { denueIdx = par[1]; return par[0]; })
+    Promise.all([catalogo, denue, conducta])
+      .then(function (par) { denueIdx = par[1]; conductaIdx = par[2]; return par[0]; })
       .then(function (cat) { return intentar(fuentes, 0, cat, []); })
       .then(function (res) {
         quality = res.quality;
@@ -3339,6 +3387,59 @@ window.APP_CONFIG = {
     return DENUE_SI_ES_ESTACION.test(n);
   }
 
+  /* ---------------------------------------------------------
+     Índice de tamaño, a partir del personal ocupado del DENUE
+
+     Qué es y qué NO es. El INEGI publica el personal ocupado en bandas, no
+     el número exacto, y el padrón de la CNE no publica volumen de ninguna
+     forma. Esto ordena estaciones por ESCALA RELATIVA —quién es grande y
+     quién es chico en un radio—, que para decidir precio es casi todo lo que
+     se necesita. No es, ni se presenta como, litros despachados: el día que
+     el tablero muestre litros que el cliente no capturó, pierde lo único que
+     lo distingue, que es que todo se puede comprobar contra la fuente.
+
+     Se lee el primer número de la banda en vez de comparar la cadena
+     completa: el DENUE viene en latin-1 y la redacción de los rangos cambia
+     entre entregas ("251 y más" / "251 y mas").
+     --------------------------------------------------------- */
+  var BANDAS_TAMANO = [
+    { min: 0,   orden: 1, corto: "0–5",     texto: "0 a 5 personas" },
+    { min: 6,   orden: 2, corto: "6–10",    texto: "6 a 10 personas" },
+    { min: 11,  orden: 3, corto: "11–30",   texto: "11 a 30 personas" },
+    { min: 31,  orden: 4, corto: "31–50",   texto: "31 a 50 personas" },
+    { min: 51,  orden: 5, corto: "51–100",  texto: "51 a 100 personas" },
+    { min: 101, orden: 6, corto: "101–250", texto: "101 a 250 personas" },
+    { min: 251, orden: 7, corto: "251+",    texto: "251 y más personas" }
+  ];
+
+  function bandaTamano(txt) {
+    var m = String(txt || "").match(/\d+/);
+    if (!m) return null;
+    var n = parseInt(m[0], 10);
+    if (!isFinite(n)) return null;
+    var elegida = null;
+    for (var i = 0; i < BANDAS_TAMANO.length; i++) {
+      if (n >= BANDAS_TAMANO[i].min) elegida = BANDAS_TAMANO[i];
+    }
+    return elegida;
+  }
+
+  function tamanoDe(row) {
+    if (!denueIdx || !row) return null;
+    var d = denueIdx[permitKey(row.permiso)];
+    return d && d.tamano ? d.tamano : null;
+  }
+
+  function chipTamano(row) {
+    var t = tamanoDe(row);
+    if (!t) return "";
+    return ' <span class="badge badge--tam" data-tip ' +
+      'data-tip-title="Índice de tamaño · banda ' + esc(t.corto) + '" ' +
+      'data-tip-body="Personal ocupado reportado al DENUE del INEGI: ' + esc(t.texto) +
+      '. Es una escala relativa de tamaño, NO volumen de venta: el padrón de la CNE ' +
+      'publica precios, no litros despachados.">' + esc(t.corto) + "</span>";
+  }
+
   function buildDenue(text) {
     var parsed = parseCsv(text);
     if (!parsed || !parsed.rows || !parsed.rows.length) return null;
@@ -3348,6 +3449,10 @@ window.APP_CONFIG = {
     var cNom = campo[normText("Nombre comercial")];
     var cDir = campo[normText("Direccion")] || campo[normText("Dirección")];
     var cCp  = campo[normText("CP")];
+    /* Personal ocupado del DENUE: cobertura del 100% en los registros
+       cruzados. Es la base del índice de tamaño. NO es volumen y nunca se
+       presenta en litros: el padrón publica precios, no despacho. */
+    var cPrs = campo[normText("Personal")];
     if (!cPer) return null;
     var idx = {};
     denueDescartados = 0;
@@ -3359,7 +3464,8 @@ window.APP_CONFIG = {
       idx[k] = {
         comercial: nom,
         direccion: cDir ? String(r[cDir] || "").trim() : "",
-        cp: cCp ? String(r[cCp] || "").trim() : ""
+        cp: cCp ? String(r[cCp] || "").trim() : "",
+        tamano: bandaTamano(cPrs ? r[cPrs] : "")
       };
     });
     return idx;
@@ -4686,6 +4792,8 @@ window.APP_CONFIG = {
     renderCompare(rows);
     renderHist(rows);
     renderTable(rows);
+    renderConducta(rows);
+    renderCumplimientoTope(rows);
     renderCompetencia(rows);
     renderVecindario();
     renderMisEstaciones();
@@ -4748,6 +4856,180 @@ window.APP_CONFIG = {
     g.precios.push(precio);
     var k = permitKey(permiso);
     if (k && !g.sitios[k]) { g.sitios[k] = 1; g.sitiosN++; }
+  }
+
+  /* ---------------------------------------------------------
+     Cumplimiento del tope de la Estrategia Nacional
+
+     Por que existe este panel: el compromiso es un precio al publico
+     MENOR A $24.00 en Regular y MENOR A $27.00 en diesel. Los analisis
+     publicos del sector suelen reportar "hasta" o "a un maximo de", y con
+     esa redaccion la estacion que publica exactamente el tope queda del
+     lado de los cumplidores. No cumple.
+
+     Ese matiz no es academico: en el corte nacional la diferencia entre
+     contar o no contar a los que estan justo en el tope mueve el
+     incumplimiento de diesel de poco mas del 13% a mas de la mitad del
+     mercado. Por eso aqui son TRES estados y no dos.
+
+     Es un pacto voluntario, no una norma sancionable: el riesgo es
+     reputacional y comercial, no una multa. El texto del panel lo dice.
+     --------------------------------------------------------- */
+  /* ---------------------------------------------------------
+     Conducta de precio: quién inicia y quién reacciona
+
+     La fuente es diaria, así que NO se puede saber quién movió primero
+     dentro del mismo día, y el tablero no finge que sí. Lo que el ETL sí
+     separa es el episodio: una estación "inicia" cuando mueve sin que ningún
+     vecino de su radio se haya movido en los dos días previos, y "sigue"
+     cuando mueve después de que alguien ya se movió. Son excluyentes y suman
+     los días evaluados.
+
+     Una primera versión medía "lidera" como "algún vecino movió después" y
+     se saturaba: en un radio con 100 vecinos siempre hay alguien moviéndose,
+     así que toda estación salía líder y seguidora a la vez. Se descartó.
+     --------------------------------------------------------- */
+  var conductaIdx = null;
+
+  function construirConductaSeguro(texto) {
+    try { return construirConducta(texto); } catch (e) { return null; }
+  }
+
+  function construirConducta(texto) {
+    var out = Papa.parse(String(texto || "").replace(/^\uFEFF/, ""),
+                         { header: true, skipEmptyLines: true });
+    if (!out || !out.data || !out.data.length) return null;
+    var idx = {}, n = 0;
+    function num(v) { var x = parseInt(v, 10); return isFinite(x) ? x : 0; }
+    out.data.forEach(function (r) {
+      var k = permitKey(r["Permiso CRE"]);
+      if (!k) return;
+      idx[k] = { movimientos: num(r["Movimientos"]), ultimo: (r["Ultimo"] || "").trim(),
+                 dias: num(r["Dias_sin_mover"]), vecinos: num(r["Vecinos"]),
+                 evaluados: num(r["Dias_evaluados"]), inicia: num(r["Inicia"]),
+                 sigue: num(r["Sigue"]) };
+      n++;
+    });
+    return n ? idx : null;
+  }
+
+  function renderConducta(rows) {
+    var caja = $("condCards"), nota = $("condNote"), pie = $("condNota"),
+        sec = $("condPanel");
+    if (!caja || !sec) return;
+    if (!conductaIdx) { sec.hidden = true; return; }
+
+    var inicia = 0, sigue = 0, conDatos = 0, quietas = 0, dias = [];
+    rows.forEach(function (r) {
+      var c = conductaIdx[permitKey(r.permiso)];
+      if (!c) { quietas++; return; }     /* no aparece en la bitácora */
+      conDatos++;
+      inicia += c.inicia; sigue += c.sigue;
+      dias.push(c.dias);
+    });
+    var ev = inicia + sigue, total = conDatos + quietas;
+    if (!total || !ev) { sec.hidden = true; return; }
+    sec.hidden = false;
+
+    dias.sort(function (a, b) { return a - b; });
+    var mediana = dias.length ? dias[Math.floor(dias.length/2)] : null;
+    function pc(x, d) { return d ? (Math.round(x/d*1000)/10).toFixed(1) + "%" : "—"; }
+
+    caja.innerHTML =
+      '<div class="tope__card tope__card--fuera"><p class="tope__label">Inician el movimiento</p>' +
+        '<p class="tope__valor" style="color:#D8A64A">' + pc(inicia, ev) + "</p>" +
+        '<p class="tope__pie">' + inicia.toLocaleString("es-MX") + " de " +
+        ev.toLocaleString("es-MX") + " movimientos evaluados</p></div>" +
+      '<div class="tope__card tope__card--justo"><p class="tope__label">Reaccionan a un vecino</p>' +
+        '<p class="tope__valor" style="color:#8A9BB2">' + pc(sigue, ev) + "</p>" +
+        '<p class="tope__pie">mueven después de que alguien de su radio ya movió</p></div>' +
+      '<div class="tope__card tope__card--cumple"><p class="tope__label">Sin mover en la bitácora</p>' +
+        '<p class="tope__valor" style="color:#10B981">' + pc(quietas, total) + "</p>" +
+        '<p class="tope__pie">' + quietas.toLocaleString("es-MX") + " de " +
+        total.toLocaleString("es-MX") + " estaciones" +
+        (mediana === null ? "" : " · mediana de " + mediana +
+         (mediana === 1 ? " día" : " días") + " sin mover en el resto") + "</p></div>";
+
+    if (nota) {
+      nota.textContent = "Quién marca el precio y quién reacciona, dentro de " +
+        (CFG.RADIO_KM || 5) + " km · " + total.toLocaleString("es-MX") +
+        " estaciones en la selección";
+    }
+    if (pie) {
+      pie.textContent = "El padrón se publica una vez al día, así que no se puede saber " +
+        "quién movió primero dentro del mismo día y el tablero no lo afirma. Lo que sí se " +
+        "separa es el episodio: iniciar es mover sin que ningún vecino del radio se haya " +
+        "movido en los dos días previos. El cálculo descarta los días que siguen a un hueco " +
+        "de la bitácora y los de movimiento masivo, porque ésos son recuperación de datos o " +
+        "un cambio fiscal, no conducta local. La bitácora arranca el 1 de octubre de 2026: " +
+        "entre más días acumule, más firme es la lectura.";
+    }
+  }
+
+  function renderCumplimientoTope(rows) {
+    var caja = $("topeCards"), nota = $("topeNote"), pie = $("topeNota");
+    if (!caja) return;
+    var prod = state.product, t = topeEstrategia(prod);
+
+    if (!t) {
+      caja.innerHTML = "";
+      if (nota) nota.textContent = PRODUCTS[prod].label +
+        " no forma parte de la Estrategia Nacional: su precio es libre.";
+      if (pie) pie.textContent = "";
+      return;
+    }
+
+    var n = 0, fuera = 0, justo = 0;
+    rows.forEach(function (r) {
+      var v = r[prod];
+      if (v === null) return;
+      n++;
+      /* Comparacion en centavos enteros: con flotantes, 27.00 publicado
+         puede llegar como 26.999999 y caer del lado equivocado. */
+      var c = Math.round(v*100), tc = Math.round(t.valor*100);
+      if (c > tc) fuera++;
+      else if (c === tc) justo++;
+    });
+
+    if (!n) {
+      caja.innerHTML = '<p class="comp__empty">La selección no tiene estaciones ' +
+        "con precio publicado de " + esc(PRODUCTS[prod].label) + ".</p>";
+      if (nota) nota.textContent = "";
+      if (pie) pie.textContent = "";
+      return;
+    }
+    var cumple = n - fuera - justo;
+    function pct(x) { return (Math.round(x/n*1000)/10).toFixed(1) + "%"; }
+
+    caja.innerHTML =
+      '<div class="tope__card tope__card--cumple"><p class="tope__label">Cumple</p>' +
+        '<p class="tope__valor" style="color:#10B981">' + pct(cumple) + "</p>" +
+        '<p class="tope__pie">' + cumple.toLocaleString("es-MX") +
+        " por debajo de " + money(t.valor) + "</p></div>" +
+      '<div class="tope__card tope__card--justo"><p class="tope__label">Exactamente en el tope</p>' +
+        '<p class="tope__valor" style="color:#D8A64A">' + pct(justo) + "</p>" +
+        '<p class="tope__pie">' + justo.toLocaleString("es-MX") +
+        " publican " + money(t.valor) + " justo</p></div>" +
+      '<div class="tope__card tope__card--fuera"><p class="tope__label">Por encima</p>' +
+        '<p class="tope__valor" style="color:#E0325B">' + pct(fuera) + "</p>" +
+        '<p class="tope__pie">' + fuera.toLocaleString("es-MX") +
+        " arriba de " + money(t.valor) + "</p></div>";
+
+    if (nota) {
+      nota.textContent = esc(t.label) + " · " + PRODUCTS[prod].label +
+        " · compromiso de precio al público menor a " + money(t.valor) +
+        (t.vigencia ? " · " + t.vigencia : "") +
+        " · " + n.toLocaleString("es-MX") + " estaciones en la selección";
+    }
+    if (pie) {
+      pie.textContent =
+        "El compromiso dice \u201cmenor a\u201d, no \u201chasta\u201d: una estación que publica " +
+        money(t.valor) + " exacto no lo cumple. Sumando ese grupo, el incumplimiento " +
+        "de la selección es " + pct(fuera + justo) + " y no " + pct(fuera) + ". " +
+        "Es un pacto voluntario, no una norma sancionable: el riesgo es reputacional " +
+        "y comercial, no una multa. En la Zona Libre de la Frontera Norte el IVA al 8% " +
+        "y los estímulos de IEPS producen precios legítimamente menores.";
+    }
   }
 
   function renderCompetencia(rows) {
@@ -6012,6 +6294,36 @@ window.APP_CONFIG = {
     var iguales = n - masBaratos - masCaros;
     var prom = precios.reduce(function (a, b) { return a + b; }, 0) / n;
     var lugar = masBaratos + 1;
+    /* Dispersión del radio. Un radio apretado significa que el mercado local
+       ya convergió y mover precio se nota de inmediato; uno ancho significa
+       que hay recorrido. Se usan P25 y P90, los mismos percentiles con los
+       que el tablero clasifica, no el mínimo y el máximo: un solo precio
+       atípico no debe describir la plaza. */
+    function pct(arr, q) {
+      if (!arr.length) return null;
+      var i = (arr.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i);
+      return lo === hi ? arr[lo] : arr[lo] + (arr[hi] - arr[lo]) * (i - lo);
+    }
+    var conmigo = precios.concat([v.ref[v.prod]]).sort(function (a, b) { return a - b; });
+    var p25 = pct(conmigo, 0.25), p90 = pct(conmigo, 0.90);
+    var ancho = (p25 === null || p90 === null) ? null : p90 - p25;
+    /* En qué percentil cae tu precio dentro del radio. Es un hecho medible,
+       no un juicio: no se dice "tienes espacio", se dice dónde estás. */
+    var miPct = Math.round(
+      conmigo.filter(function (x) { return x < v.ref[v.prod]; }).length /
+      conmigo.length * 100);
+
+    /* Índice de tamaño: cuántos del radio son de una banda mayor a la tuya.
+       Solo cuenta los que SÍ tienen cruce con el DENUE, y se declara. */
+    var miTam = tamanoDe(v.ref), conTam = 0, mayores = 0, menores = 0;
+    lista.forEach(function (x) {
+      var t = tamanoDe(x.row);
+      if (!t || !miTam) return;
+      conTam++;
+      if (t.orden > miTam.orden) mayores++;
+      else if (t.orden < miTam.orden) menores++;
+    });
+
     var masCercano = lista.slice().sort(function (a, b) { return a.km - b.km; })[0];
     var masBarato = lista.slice().sort(function (a, b) { return a.precio - b.precio; })[0];
 
@@ -6023,6 +6335,9 @@ window.APP_CONFIG = {
         '<div class="vec__dato"><b>' + money(prom) + "</b><span>Promedio del radio</span></div>" +
         '<div class="vec__dato"><b>' + (v.ref[v.prod] - prom >= 0 ? "+" : "") +
           money(v.ref[v.prod] - prom) + "</b><span>Tu diferencia</span></div>" +
+        (ancho === null ? "" :
+          '<div class="vec__dato"><b>' + money(ancho) +
+          "</b><span>Dispersión P25–P90</span></div>") +
       "</div>" +
       '<p class="vec__lectura">' +
         "Dentro de " + radio + " km de <b>" + esc(v.ref.estacion || v.ref.permiso) + "</b> hay <b>" + n +
@@ -6039,11 +6354,27 @@ window.APP_CONFIG = {
           ? "El más agresivo en precio es <b>" + esc(masBarato.row.estacion || masBarato.row.permiso) +
             "</b> con " + money(masBarato.precio) + ", " + money(Math.abs(masBarato.delta)) + " por debajo de ti."
           : "Ninguno te gana en precio: el más bajo del radio es " + money(masBarato.precio) + ".") +
-      "</p>";
+        (ancho === null ? "" :
+          " Entre el percentil 25 y el 90 del radio hay <b>" + money(ancho) +
+          "</b> de diferencia (" + money(p25) + " a " + money(p90) +
+          "), y tu precio queda por encima del <b>" + miPct + "%</b> de la plaza.") +
+      "</p>" +
+      /* El índice de tamaño va en su propio párrafo y con su metodología a la
+         vista. Nunca se expresa en litros. */
+      (!miTam || !conTam ? "" :
+        '<p class="vec__lectura vec__lectura--tam">' +
+          "Por <b>índice de tamaño</b> —personal ocupado reportado al DENUE del INEGI, " +
+          "no volumen de venta— tu estación está en la banda <b>" + esc(miTam.corto) +
+          "</b>. De los <b>" + conTam + "</b> competidores del radio con cruce en el DENUE, <b>" +
+          mayores + "</b> " + (mayores === 1 ? "es de una banda mayor" : "son de una banda mayor") +
+          " y <b>" + menores + "</b> " + (menores === 1 ? "de una menor" : "de una menor") + ". " +
+          "El padrón de la CNE no publica litros despachados: esto ordena por escala, no mide venta." +
+        "</p>")
 
     var filas = [
       '<tr class="is-ref"><td><div class="cell-station">' + esc(v.ref.estacion || v.ref.permiso) +
-        '<span class="badge badge--own">Referencia</span>' + insignia(v.ref, v.prod) + "</div>" +
+        '<span class="badge badge--own">Referencia</span>' + insignia(v.ref, v.prod) +
+        chipTamano(v.ref) + "</div>" +
         '<div class="cell-addr">' + esc([v.ref.municipio, v.ref.estado].filter(Boolean).join(", ") || "—") + "</div></td>" +
         '<td><span class="cell-permit">' + (esc(v.ref.permiso) || "—") + "</span></td>" +
         '<td class="is-num vec__dist">—</td>' +
@@ -6060,7 +6391,7 @@ window.APP_CONFIG = {
       filas.push(
         "<tr><td><div class=\"cell-station\">" + esc(x.row.estacion || x.row.permiso) +
           (x.row._own ? '<span class="badge badge--own">Sucursal propia</span>' : "") +
-          insignia(x.row, v.prod) + "</div>" +
+          insignia(x.row, v.prod) + chipTamano(x.row) + "</div>" +
           /* Frente a un competidor, el nombre de calle y el domicilio son lo
              que permite saber de cuál se está hablando sin abrir el mapa. */
           (x.row.comercial && x.row.comercial !== x.row.estacion
