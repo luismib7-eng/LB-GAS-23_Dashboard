@@ -1,6 +1,6 @@
 # Subcuentas activas
 
-Corte del 2026-10-29 · 3 de 15 subcuentas contratadas
+Corte del 2026-10-30 · 3 de 15 subcuentas contratadas
 
 | Cliente | Estación | Plaza | Radio datos | Estaciones |
 |---|---|---|---|---|
