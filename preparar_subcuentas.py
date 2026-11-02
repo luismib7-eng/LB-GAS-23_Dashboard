@@ -48,7 +48,13 @@ import shutil
 import subprocess
 import sys
 
-DATOS_RECORTABLES = ("fallback.csv", "catalogo_estaciones.csv")
+# Todo CSV del paquete que se indexe por "Permiso CRE" tiene que recortarse.
+# conducta.csv y denue.csv faltaban: viajaban nacionales dentro de cada
+# subcuenta y, aunque el tablero solo los usa como indice cruzado contra el
+# padron local, con la URL de la subcuenta se descargaban completos. El
+# docstring promete un recorte fisico; esto lo cumple (error 19, 2 nov 2026).
+DATOS_RECORTABLES = ("fallback.csv", "catalogo_estaciones.csv",
+                     "conducta.csv", "denue.csv")
 COLUMNAS = ("slug", "nombre", "permiso_cre", "radio_km", "radio_datos_km", "zoom", "activo")
 
 

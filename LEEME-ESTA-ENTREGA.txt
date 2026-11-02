@@ -1,0 +1,42 @@
+LB GAS 23 — Entrega v2026-11-02_err19
+=====================================
+Origen: commit 57d77d6 (Precios 2026-11-01). Auditoría del lunes 2 nov 2026.
+
+QUÉ CAMBIA (dos archivos de código y uno de documentación)
+
+1. preparar_subcuentas.py
+   DATOS_RECORTABLES ahora incluye conducta.csv y denue.csv. Antes solo
+   recortaba fallback.csv y catalogo_estaciones.csv, y las subcuentas
+   entregaban esos dos archivos COMPLETOS, nacionales: 46,620 filas de
+   estaciones fuera de su radio en las tres subcuentas publicadas.
+   El flujo diario regenera clientes/ en cada corte: el próximo corte
+   corrige los datos publicados sin tocar nada a mano.
+
+2. auditoria.py
+   - Bloque nuevo SUBCUENTAS: recorre cada carpeta de subcuenta, toma todo
+     CSV con columna "Permiso CRE" y mide la distancia Haversine de cada
+     estación al permiso centro. CRÍTICO si hay filas más allá del radio de
+     datos. No lee la constante: mide el archivo entregado. Un CSV nuevo del
+     ETL queda cubierto el día que aparece.
+   - Dos centinelas nuevos (error 19) sobre preparar_subcuentas.py.
+   Bloques: 12 (antes 11).
+
+3. 03-ERRORES-RESUELTOS.md
+   Error 19 documentado, con la lección: un centinela que comprueba que una
+   constante existe no comprueba que su contenido esté completo.
+
+NO INCLUIDO, A PROPÓSITO
+   historico.csv, movimientos.csv, fallback.csv, catalogo_estaciones.csv,
+   conducta.csv, denue.csv, reporte_mercado.csv, historico.xlsx y clientes/.
+   Las dos primeras son irrecuperables (regla 1.2) y el resto las regenera
+   el corte diario. Esta entrega es solo código, configuración y documentación.
+
+VERIFICACIÓN HECHA ANTES DE ENTREGAR
+   - Los 19 centinelas de código presentes, los 8 patrones prohibidos ausentes.
+   - Los 6 scripts de Python compilan; JS del index.html y de las 4 instancias
+     válido; workflow YAML válido; manifest con sus iconos.
+   - El sitio abre en Chromium sin un solo error de JavaScript y las cifras que
+     pinta se recalcularon en Python: tabla 13,853 y 13,855, panel del tope
+     82.6/4.0/13.4 %, radio de 5 km con 70 competidores y lugar 20 de 71,
+     promedio nacional $23.70, 1,418 grupos operadores con dos o más
+     estaciones. Todas coinciden.

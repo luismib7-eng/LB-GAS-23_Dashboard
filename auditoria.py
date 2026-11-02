@@ -91,6 +91,10 @@ DEBE_EXISTIR = [
      "el histórico y la bitácora nunca se recortan"),
     ("preparar_cliente.py", "limites_app_config", 16,
      "delimitar APP_CONFIG contando llaves, no por el literal '};'"),
+    ("preparar_subcuentas.py", '"conducta.csv"', 19,
+     "la bitacora de conducta se recorta al radio de la subcuenta"),
+    ("preparar_subcuentas.py", '"denue.csv"', 19,
+     "el indice del DENUE se recorta al radio de la subcuenta"),
     ("sw.js", "openstreetmap\\.org$", 0,
      "coincidencia de host anclada en el service worker"),
 ]
@@ -1039,6 +1043,113 @@ def bloque_funcional(raiz, R):
         R.add(BIEN, "Funcional", "La dinámica sigue viendo varios cortes", din)
 
 
+
+# ─────────────────────────────────────────────────────────────────────
+#  SUBCUENTAS — que el recorte sea FISICO, como dice la promesa
+#
+#  Hallazgo del 2 de noviembre de 2026 (error 19). preparar_subcuentas.py
+#  recortaba solo fallback.csv y catalogo_estaciones.csv. conducta.csv y
+#  denue.csv viajaban COMPLETOS, nacionales, dentro de cada carpeta de
+#  subcuenta. En pantalla no se notaba —los dos se usan como indice
+#  cruzado contra el padron local— pero cualquiera con la URL de una
+#  subcuenta podia descargar el comportamiento de precio de las 13,853
+#  estaciones del pais y el DENUE con domicilio y personal ocupado.
+#
+#  El docstring del generador promete que "el recorte es fisico, no
+#  cosmetico" y que la subcuenta "no ve la cartera de la comercializadora
+#  y no ve a los demas clientes". Eso es una afirmacion sobre el producto
+#  y la regla 1.6 obliga a que sea verificable contra el archivo. No lo
+#  era. Este bloque la verifica midiendo distancias, no leyendo codigo.
+# ─────────────────────────────────────────────────────────────────────
+def _hav(la1, lo1, la2, lo2):
+    import math
+    rt = 6371.0
+    p = math.radians
+    x = (math.sin(p(la2 - la1) / 2) ** 2 +
+         math.cos(p(la1)) * math.cos(p(la2)) * math.sin(p(lo2 - lo1) / 2) ** 2)
+    return 2 * rt * math.asin(math.sqrt(x))
+
+
+def _norm_permiso(s):
+    k = "".join(str(s or "").split()).upper()
+    return k[4:] if k.startswith("CNE/") else k
+
+
+def bloque_subcuentas(raiz, R):
+    """Error 19: todo CSV por permiso entregado a una subcuenta debe venir recortado."""
+    cat = filas(os.path.join(raiz, "catalogo_estaciones.csv"))
+    if not cat:
+        return
+    coord = {}
+    for r in cat:
+        try:
+            la, lo = float(r["Lat"]), float(r["Lon"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if 14.0 <= la <= 33.0 and -118.5 <= lo <= -86.0:
+            coord[_norm_permiso(r.get("Permiso CRE"))] = (la, lo)
+
+    revisadas = fugas = 0
+    for dirpath, _dn, fn in os.walk(os.path.join(raiz, "clientes")):
+        pad = os.path.join(os.path.dirname(dirpath), "subcuentas.csv")
+        if not os.path.exists(pad):
+            continue
+        slug = os.path.basename(dirpath)
+        fila = None
+        for s in (filas(pad) or []):
+            if (s.get("slug") or "").strip() == slug:
+                fila = s
+                break
+        if not fila or (fila.get("activo") or "si").strip().lower() not in ("si", "sí", "s", "1", "true"):
+            continue
+        tgt = _norm_permiso(fila.get("permiso_cre"))
+        if tgt not in coord:
+            R.add(ALERTA, "Subcuentas", "%s: su permiso no tiene coordenada" % slug,
+                  "No se pudo verificar el recorte.", 19)
+            continue
+        try:
+            radio = float((fila.get("radio_datos_km") or "").strip() or 0) \
+                    or max(15.0, float((fila.get("radio_km") or "5").strip()) * 3)
+        except ValueError:
+            radio = 15.0
+        la0, lo0 = coord[tgt]
+        revisadas += 1
+
+        # TODO csv del paquete que lleve columna "Permiso CRE" debe venir
+        # recortado. Se descubre por extension, no por una lista fija: un
+        # archivo nuevo del ETL queda cubierto el dia que aparece.
+        for arch in sorted(f for f in os.listdir(dirpath) if f.endswith(".csv")):
+            fs = filas(os.path.join(dirpath, arch))
+            if not fs or "Permiso CRE" not in fs[0]:
+                continue        # historico.csv y reporte_mercado.csv son agregados
+            fuera = []
+            for r in fs:
+                p = _norm_permiso(r.get("Permiso CRE"))
+                if p not in coord:
+                    continue
+                d = _hav(la0, lo0, coord[p][0], coord[p][1])
+                if d > radio + 0.5:
+                    fuera.append((p, round(d, 1)))
+            if fuera:
+                fugas += 1
+                R.add(CRITICO, "Subcuentas",
+                      "%s/%s entrega %d estacion(es) fuera de su radio" % (slug, arch, len(fuera)),
+                      "Radio de datos %.0f km. Ejemplos a %s km. El recorte de esta "
+                      "subcuenta no es fisico: con la URL se descarga el archivo "
+                      "completo. Es el error 19."
+                      % (radio, ", ".join(str(x[1]) for x in fuera[:3])), 19)
+        if _norm_permiso(tgt) not in {
+                _norm_permiso(r.get("Permiso CRE"))
+                for r in (filas(os.path.join(dirpath, "fallback.csv")) or [])}:
+            R.add(ALERTA, "Subcuentas", "%s no contiene su propia estacion" % slug,
+                  "El tablero abrira sin la estacion del cliente.", 19)
+    if revisadas and not fugas:
+        R.add(BIEN, "Subcuentas",
+              "%d subcuenta(s) con recorte fisico verificado por distancia" % revisadas)
+    elif not revisadas:
+        R.add(AVISO, "Subcuentas", "No hay subcuentas que verificar")
+
+
 def imprimir(R, markdown=False):
     orden = [CRITICO, ALERTA, AVISO, BIEN]
     etiqueta = {CRITICO: "CRÍTICO", ALERTA: "ALERTA", AVISO: "AVISO", BIEN: "OK"}
@@ -1095,7 +1206,8 @@ def main():
     R = Reporte()
     bloques = [bloque_estructura, bloque_centinela, bloque_sintaxis,
                bloque_referencias, bloque_series, bloque_padron, bloque_coherencia,
-               bloque_codigo, bloque_clientes, bloque_flujo, bloque_git]
+               bloque_codigo, bloque_clientes, bloque_subcuentas,
+               bloque_flujo, bloque_git]
     if "--sin-navegador" not in sys.argv:
         bloques.insert(2, bloque_funcional)
     for fn in bloques:
