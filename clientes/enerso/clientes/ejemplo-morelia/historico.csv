@@ -449,3 +449,9 @@ Fecha,Ambito,Clave,Producto,Promedio,Estaciones
 2026-11-01,nacional,MX,Diesel,26.9787,10514
 2026-11-01,nacional,MX,Premium,28.5916,12991
 2026-11-01,nacional,MX,Regular,23.6963,13781
+2026-11-02,estado,Michoacán,Diesel,26.9881,513
+2026-11-02,estado,Michoacán,Premium,29.0371,543
+2026-11-02,estado,Michoacán,Regular,23.8973,560
+2026-11-02,nacional,MX,Diesel,26.9782,10513
+2026-11-02,nacional,MX,Premium,28.5916,12991
+2026-11-02,nacional,MX,Regular,23.6965,13779
