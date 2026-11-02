@@ -454,3 +454,61 @@ corte individual. La dinámica sigue viendo sus 7 cortes y 6 días medidos.
    compartida y revisa TODOS los paneles que cuentan lo mismo** en el mismo
    cambio. Es la regla del error 15, que ya estaba escrita y aun así falló
    por no aplicarse.
+
+---
+
+## 19. Las subcuentas entregaban el padrón nacional de conducta y del DENUE
+
+**Qué pasó.** El 2 de noviembre de 2026, la auditoría semanal verificó por
+primera vez el recorte de las subcuentas midiendo distancias en vez de leyendo
+código. `preparar_subcuentas.py` recortaba `fallback.csv` y
+`catalogo_estaciones.csv` —su constante `DATOS_RECORTABLES` solo nombraba esos
+dos— y dejaba pasar completos `conducta.csv` y `denue.csv`. Las tres subcuentas
+publicadas entregaban **46,620 filas de estaciones fuera de su radio**: 4,994
+filas de conducta de precio nacional cada una (de las que 4,931 a 4,978 eran
+ajenas a su plaza) y 10,671 filas de DENUE con nombre comercial, domicilio,
+código postal y personal ocupado.
+
+**Por qué no se veía.** El tablero usa los dos archivos como índice cruzado
+contra el padrón local: `conductaIdx[permitKey(r.permiso)]` y
+`denueIdx[permitKey(row.permiso)]` solo resuelven para estaciones que ya están
+en `state.rows`, y en una subcuenta `state.rows` sí venía recortado. En
+pantalla no había nada que delatara el exceso. La fuga era por descarga
+directa: `…/clientes/enerso/clientes/<slug>/conducta.csv`.
+
+**Qué se incumplía.** El docstring del propio generador promete que cada
+subcuenta "recibe únicamente las estaciones de su vecindario geográfico", que
+"no ve la cartera de la comercializadora y no ve a los demás clientes" y que
+"el recorte es físico, no cosmético". Las tres frases eran falsas para dos de
+los cuatro CSV por permiso del paquete. Es una afirmación sobre el producto que
+la regla 1.6 obliga a poder verificar contra el archivo, y no se podía.
+
+**Causa.** La misma de los errores 13 y 18 en otra forma: una lista fija que
+había que recordar ampliar. `conducta.csv` y `denue.csv` se incorporaron al
+paquete después de que se escribiera `DATOS_RECORTABLES` y nadie volvió a esa
+constante. Ninguna comprobación ataba el contenido entregado a la promesa.
+
+**Solución.** Dos partes, y la segunda es la que importa:
+
+1. `DATOS_RECORTABLES` ahora incluye `conducta.csv` y `denue.csv`. El flujo
+   diario regenera las subcuentas en cada corte, así que no hizo falta cirugía
+   manual sobre los datos publicados.
+2. `auditoria.py` incorpora el bloque **SUBCUENTAS**, que no lee la constante:
+   recorre cada carpeta de subcuenta, toma **todo** CSV que traiga columna
+   `Permiso CRE`, calcula la distancia Haversine de cada estación al permiso
+   centro y marca CRÍTICO cualquier fila más allá del radio de datos. Un archivo
+   nuevo del ETL queda cubierto el día que aparece, sin editar ninguna lista.
+   Los agregados —`historico.csv`, `reporte_mercado.csv`— se saltan solos por no
+   tener la columna, así que el bloque no grita lobo.
+
+**Verificado en producción.** El corte `Precios 2026-11-02` (20:35 UTC)
+regeneró las subcuentas con el script corregido. Medido contra el repositorio
+publicado: conducta quedó en 42, 62 y 15 filas y el DENUE en 151, 84 y 16,
+con **cero filas fuera del radio** en los cuatro CSV por permiso de las tres
+subcuentas.
+
+**Lección.** El error 18 enseñó a atar cada corrección a una marca de código.
+Este enseña el límite de esa técnica: un centinela que comprueba que una
+constante existe no comprueba que su contenido esté completo. Donde hay una
+promesa sobre los datos entregados, la auditoría tiene que medir los datos
+entregados.
