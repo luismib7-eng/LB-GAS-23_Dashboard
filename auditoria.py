@@ -181,6 +181,64 @@ def bloque_estructura(raiz, R):
         R.add(BIEN, "Estructura", "Árbol plano en la raíz, con workflow")
 
 
+# ──────────────────────────────────────────────────────────────────
+#  SUPERFICIE PUBLICADA — la raíz del repo ES el sitio
+#
+#  GitHub Pages publica desde la raíz con `.nojekyll`: todo archivo que
+#  esté ahí queda servido en la URL pública. Es por eso que el tablero
+#  puede pedir `fallback.csv` —y por eso un documento interno dejado en la
+#  raíz también se descarga. El 10 de noviembre de 2026 se retiraron tres
+#  que llevaban meses publicados: el análisis del competidor, el registro
+#  de errores —que narra las fugas de datos de clientes y nombra a un
+#  cliente— y las cifras internas. Viven en la base de conocimiento.
+#
+#  También se retiró una copia inerte de `actualizar-datos.yml` en la
+#  raíz: GitHub solo lee `.github/workflows/`, así que esa copia no corría
+#  nada y podía divergir en silencio de la que sí corre. Dos archivos con
+#  el mismo nombre y distinto contenido es una trampa conocida de este
+#  proyecto.
+# ──────────────────────────────────────────────────────────────────
+NO_PUBLICAR = [
+    ("actualizar-datos.yml",
+     "copia inerte del flujo: GitHub solo lee .github/workflows/"),
+    ("03-ERRORES-RESUELTOS.md",
+     "registro interno: narra las fugas de datos y nombra a un cliente"),
+    ("01-ESQUEMAS-Y-CIFRAS-VERIFICADAS.md",
+     "cifras internas del proyecto"),
+    ("CONTRAINTELIGENCIA-SIGNAL-FUELS.md",
+     "análisis de un competidor: publicarlo se lo entrega"),
+    ("LEEME.md",
+     "bitácora de versiones superada por el registro de errores"),
+    ("LEEME-ANTES-DE-SUBIR.txt",
+     "notas de una entrega ya integrada"),
+]
+
+
+def bloque_publicado(raiz, R):
+    hallados = []
+    for nombre, porque in NO_PUBLICAR:
+        if os.path.exists(os.path.join(raiz, nombre)):
+            hallados.append(nombre)
+            R.add(ALERTA, "Publicado",
+                  "%s volvió a la raíz del repositorio" % nombre,
+                  "La raíz se sirve entera en la URL pública. %s. Se retiró el "
+                  "10 de noviembre de 2026; si volvió, fue una entrega completa "
+                  "que lo reintrodujo." % porque)
+    # Cualquier .md o .txt nuevo en la raíz merece una mirada: no se prohibe,
+    # se avisa, porque la raíz no es carpeta de notas.
+    sueltos = sorted(f for f in os.listdir(raiz)
+                     if f.endswith((".md", ".txt"))
+                     and f not in ("README.md", "LEEME-ESTA-ENTREGA.txt")
+                     and f not in [n for n, _ in NO_PUBLICAR])
+    if sueltos:
+        R.add(AVISO, "Publicado",
+              "%d documento(s) nuevo(s) en la raíz pública" % len(sueltos),
+              ", ".join(sueltos) + ". Confirma que deban ser públicos.")
+    if not hallados and not sueltos:
+        R.add(BIEN, "Publicado",
+              "La raíz publicada no trae documentos internos")
+
+
 def bloque_centinela(raiz, R):
     """Error 18: verificar que las correcciones del registro sigan en el código."""
     cache = {}
@@ -1293,7 +1351,7 @@ def main():
     R = Reporte()
     bloques = [bloque_estructura, bloque_centinela, bloque_sintaxis,
                bloque_referencias, bloque_series, bloque_padron, bloque_coherencia,
-               bloque_codigo, bloque_clientes, bloque_instancias,
+               bloque_codigo, bloque_clientes, bloque_publicado, bloque_instancias,
                bloque_subcuentas, bloque_flujo, bloque_git]
     if "--sin-navegador" not in sys.argv:
         bloques.insert(2, bloque_funcional)

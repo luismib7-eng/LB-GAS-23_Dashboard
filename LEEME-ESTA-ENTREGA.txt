@@ -1,39 +1,81 @@
-LB GAS 23 — Entrega v2026-11-10_err20
-=====================================
-Origen: commit 1715400 (Precios 2026-11-09, 23:11 UTC). Auditoría del lunes
-9 nov 2026, reconfirmada el 10 sobre el corte siguiente.
+LB GAS 23 — Entrega v2026-11-10_err20-depurado
+==============================================
+Origen: commit 1715400 (Precios 2026-11-09, 23:11 UTC).
 
-QUE TRAE
---------
-Corrección del error 20: la carpeta de cliente entregaba el padrón nacional de
-`conducta.csv` y de `denue.csv`. Tres archivos cambiados:
+Trae dos cosas: la corrección del error 20 y la depuración del paquete.
 
-  preparar_cliente.py      el arreglo
-  auditoria.py             la comprobación que lo habría detectado
-  03-ERRORES-RESUELTOS.md  el registro del error 20
 
-Los demás archivos van idénticos a los publicados, para reemplazar de golpe sin
-dejar mezcla de versiones.
+1. CORRECCION DEL ERROR 20
+--------------------------
+La carpeta de cliente entregaba el padrón nacional de `conducta.csv` y de
+`denue.csv`. Al corte del 9 de noviembre eran 4,284 y 8,558 filas de estaciones
+fuera de la Región Occidente contratada por ENERSO.
 
-QUE NO TRAE
------------
-Ningún dato. Ni `historico.csv` ni `movimientos.csv` (irrecuperables, regla 1.2),
+  preparar_cliente.py   `filtrar_csv` ya no copia el archivo nacional cuando
+                        falta la columna de recorte: aborta. Y `filtrar_por_permiso`
+                        recorta por `Permiso CRE` contra el catálogo del cliente.
+  auditoria.py          bloque INSTANCIAS, que mide lo entregado; y la ruta del
+                        bloque SUBCUENTAS, que buscaba `subcuentas.csv` un nivel
+                        arriba de donde vive y llevaba una semana sin revisar nada.
+
+
+2. DEPURACION: 28 ARCHIVOS -> 21
+--------------------------------
+Se retiraron siete. Ninguno tenía función viva:
+
+  actualizar-datos.yml               copia byte a byte de la que sí corre en
+                                     .github/workflows/. GitHub no lee la raíz:
+                                     no hacía nada y podía divergir en silencio.
+  LEEME.md                           bitácora de v15/v16/v17 de octubre, superada.
+  LEEME-ANTES-DE-SUBIR.txt           notas de la subida v13 del 16 de octubre.
+  construir_denue_csv.py             no lo llama el flujo y traía rutas absolutas
+                                     de otra máquina: no corría. Va por separado.
+  CONTRAINTELIGENCIA-SIGNAL-FUELS.md \
+  03-ERRORES-RESUELTOS.md             > documentos internos que la raíz publicaba
+  01-ESQUEMAS-Y-CIFRAS-VERIFICADAS.md/  en la URL. Viven en la base de conocimiento.
+
+Se quedó `tar_referencia.PLANTILLA.csv`, que parecía muerto: ningún archivo lo
+nombra, pero el tablero lo lee por `TAR_CSV` y sus columnas están en index.html.
+
+`auditoria.py` incorpora el bloque PUBLICADO: si alguno de esos siete vuelve a
+la raíz, o aparece un .md nuevo, lo avisa el lunes siguiente.
+
+
+3. COMO INTEGRAR — LEE ESTO, CAMBIO RESPECTO A OTRAS ENTREGAS
+-------------------------------------------------------------
+Este ZIP trae los 21 archivos que van al repositorio, y nada mas. Descomprime
+sobre la raiz, reemplazando.
+
+PERO descomprimir NO borra. Esta entrega retira siete archivos, asi que despues
+de descomprimir hay que darlos de baja, en una sola linea:
+
+    git rm actualizar-datos.yml LEEME.md LEEME-ANTES-DE-SUBIR.txt \
+           construir_denue_csv.py CONTRAINTELIGENCIA-SIGNAL-FUELS.md \
+           03-ERRORES-RESUELTOS.md 01-ESQUEMAS-Y-CIFRAS-VERIFICADAS.md
+
+Luego sube. El proximo corte diario regenera `clientes/enerso/` con el generador
+corregido; no hace falta tocar datos a mano.
+
+Al final corre `python3 auditoria.py . --markdown` y confirma que los bloques
+INSTANCIAS y PUBLICADO salgan en verde.
+
+Si algun dia necesitas `construir_denue_csv.py` —para rehacer denue.csv cuando
+el INEGI publique— no hace falta que nadie te lo mande: sigue en el historial.
+
+    git show HEAD~1:construir_denue_csv.py > construir_denue_csv.py
+
+Lo mismo para los tres documentos internos que salieron: estan en el historial
+y en la base de conocimiento del proyecto.
+
+
+4. QUE NO TRAE
+--------------
+Ningún dato: ni `historico.csv` ni `movimientos.csv` (irrecuperables, regla 1.2),
 ni `fallback.csv`, `catalogo_estaciones.csv`, `conducta.csv`, `denue.csv`,
-`reporte_mercado.csv`, `historico.xlsx` ni `clientes/`. Todos los regenera el
-corte diario.
+`reporte_mercado.csv`, `historico.xlsx` ni `clientes/`. Los regenera el corte.
 
-COMO INTEGRAR
--------------
-1. Descomprime sobre la raíz del repositorio, reemplazando.
-2. Sube. El próximo corte diario regenera `clientes/enerso/` con el generador
-   corregido y reescribe los dos CSV ya recortados. No hace falta tocar datos
-   a mano.
-3. Después del corte, corre `python3 auditoria.py . --markdown` y confirma que
-   el bloque INSTANCIAS salga en verde.
 
-QUE PASA SI NO SE INTEGRA
--------------------------
+5. SI NO SE INTEGRA
+-------------------
 `clientes/enerso/conducta.csv` y `clientes/enerso/denue.csv` siguen publicados
-completos y nacionales en una URL de cliente, y cada corte diario los vuelve a
-escribir así. Al corte del 9 de noviembre eran 4,284 y 8,558 filas de estaciones
-fuera de la Región Occidente contratada.
+completos y nacionales en una URL de cliente, y cada corte los reescribe así.
