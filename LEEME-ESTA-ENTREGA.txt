@@ -1,81 +1,68 @@
-LB GAS 23 — Entrega v2026-11-10_err20-depurado
-==============================================
-Origen: commit 1715400 (Precios 2026-11-09, 23:11 UTC).
+LB GAS 23 — Entrega v2026-11-10b_mapa
+=====================================
+Origen: commit f29b020 (tu subida del 10 nov). Corrige el error 21.
 
-Trae dos cosas: la corrección del error 20 y la depuración del paquete.
-
-
-1. CORRECCION DEL ERROR 20
---------------------------
-La carpeta de cliente entregaba el padrón nacional de `conducta.csv` y de
-`denue.csv`. Al corte del 9 de noviembre eran 4,284 y 8,558 filas de estaciones
-fuera de la Región Occidente contratada por ENERSO.
-
-  preparar_cliente.py   `filtrar_csv` ya no copia el archivo nacional cuando
-                        falta la columna de recorte: aborta. Y `filtrar_por_permiso`
-                        recorta por `Permiso CRE` contra el catálogo del cliente.
-  auditoria.py          bloque INSTANCIAS, que mide lo entregado; y la ruta del
-                        bloque SUBCUENTAS, que buscaba `subcuentas.csv` un nivel
-                        arriba de donde vive y llevaba una semana sin revisar nada.
+Dos archivos cambian: index.html y auditoria.py. Los demas van identicos, para
+reemplazar de golpe sin dejar mezcla de versiones.
 
 
-2. DEPURACION: 28 ARCHIVOS -> 21
---------------------------------
-Se retiraron siete. Ninguno tenía función viva:
+1. EL FALLO DEL MAPA TACTICO
+----------------------------
+Con "Todos los periodos" y despues de mover el mapa, cada estacion se dibujaba
+una vez por corte: siete marcadores apilados en la misma coordenada, cada uno
+con su globo y la misma razon social con el precio de un dia distinto. Censado
+en el navegador:
 
-  actualizar-datos.yml               copia byte a byte de la que sí corre en
-                                     .github/workflows/. GitHub no lee la raíz:
-                                     no hacía nada y podía divergir en silencio.
-  LEEME.md                           bitácora de v15/v16/v17 de octubre, superada.
-  LEEME-ANTES-DE-SUBIR.txt           notas de la subida v13 del 16 de octubre.
-  construir_denue_csv.py             no lo llama el flujo y traía rutas absolutas
-                                     de otra máquina: no corría. Va por separado.
-  CONTRAINTELIGENCIA-SIGNAL-FUELS.md \
-  03-ERRORES-RESUELTOS.md             > documentos internos que la raíz publicaba
-  01-ESQUEMAS-Y-CIFRAS-VERIFICADAS.md/  en la URL. Viven en la base de conocimiento.
+                          antes            despues
+  Guadalajara zoom 15     112 marcadores   16 marcadores
+                          16 posiciones    16 posiciones
+                          7 apilados       0 apilados
+  Guadalajara zoom 13     1,344            192
+  Estaciones propias      14               2
+  Vista nacional          2,499 dibujadas  13,296 dibujadas
 
-Se quedó `tar_referencia.PLANTILLA.csv`, que parecía muerto: ningún archivo lo
-nombra, pero el tablero lo lee por `TAR_CSV` y sus columnas están en index.html.
+Causa 1: el mapa tiene sus propios repintados (`moveend/zoomend` y
+`popupclose`) y llamaban `pintarMapa(scoped())` con los cortes sin colapsar.
+`render()` si mandaba `est` ya colapsado, por eso el primer dibujo salia bien y
+se degradaba al primer paneo. Ahora el colapso vive DENTRO de `pintarMapa`
+—`pintarMapaInterno(unicas(rows))`— para que ningun llamador futuro lo tenga
+que recordar.
 
-`auditoria.py` incorpora el bloque PUBLICADO: si alguno de esos siete vuelve a
-la raíz, o aparece un .md nuevo, lo avisa el lunes siguiente.
+Causa 2: `MAPA_MAX_PUNTOS` estaba en 2,500 contra 13,846 estaciones. A vista
+nacional el mapa escondia cuatro quintas partes del padron. Medido con el
+renderizador canvas sobre el padron real, repintado por paneo a zoom 5:
+
+  tope  2,500 ->  2,499 marcadores, ~350 ms
+  tope 16,000 -> 13,296 marcadores, ~1,070 ms
+
+Se sube a 16,000. El costo solo aparece en la vista nacional; en una plaza
+caben pocas estaciones.
+
+`auditoria.py` suma el centinela `pintarMapaInterno(unicas(rows))` atado al
+error 21, para que la correccion no se pierda como paso con la del error 15.
 
 
-3. COMO INTEGRAR — LEE ESTO, CAMBIO RESPECTO A OTRAS ENTREGAS
--------------------------------------------------------------
-Este ZIP trae los 21 archivos que van al repositorio, y nada mas. Descomprime
-sobre la raiz, reemplazando.
+2. LO QUE NO ES DEL MAPA, Y NO SE TOCO
+--------------------------------------
+Quedan 4 coordenadas del catalogo compartidas por dos permisos distintos (8
+estaciones). En dos de ellas la razon social es la misma —SERVICIO EFIGAS y
+LUNA GAS— porque la CNE publica dos permisos para el mismo sitio. Ahi seguiran
+viendose dos marcadores encimados: es el padron, no el dibujo. Separarlos unos
+metros seria mover una estacion de donde la fuente dice que esta. Si lo
+prefieres asi, se hace, pero que quede dicho.
 
-PERO descomprimir NO borra. Esta entrega retira siete archivos, asi que despues
-de descomprimir hay que darlos de baja, en una sola linea:
 
-    git rm actualizar-datos.yml LEEME.md LEEME-ANTES-DE-SUBIR.txt \
-           construir_denue_csv.py CONTRAINTELIGENCIA-SIGNAL-FUELS.md \
-           03-ERRORES-RESUELTOS.md 01-ESQUEMAS-Y-CIFRAS-VERIFICADAS.md
+3. COMO INTEGRAR
+----------------
+Descomprime sobre la raiz, reemplazando. Esta entrega no da de baja ningun
+archivo, asi que no hace falta `git rm`.
 
-Luego sube. El proximo corte diario regenera `clientes/enerso/` con el generador
-corregido; no hace falta tocar datos a mano.
-
-Al final corre `python3 auditoria.py . --markdown` y confirma que los bloques
-INSTANCIAS y PUBLICADO salgan en verde.
-
-Si algun dia necesitas `construir_denue_csv.py` —para rehacer denue.csv cuando
-el INEGI publique— no hace falta que nadie te lo mande: sigue en el historial.
-
-    git show HEAD~1:construir_denue_csv.py > construir_denue_csv.py
-
-Lo mismo para los tres documentos internos que salieron: estan en el historial
-y en la base de conocimiento del proyecto.
+Sube, y despues del siguiente corte corre `python3 auditoria.py . --markdown`:
+el bloque Centinela debe decir 25 correcciones.
 
 
 4. QUE NO TRAE
 --------------
-Ningún dato: ni `historico.csv` ni `movimientos.csv` (irrecuperables, regla 1.2),
-ni `fallback.csv`, `catalogo_estaciones.csv`, `conducta.csv`, `denue.csv`,
+Ningun dato: ni `historico.csv` ni `movimientos.csv` (irrecuperables, regla
+1.2), ni `fallback.csv`, `catalogo_estaciones.csv`, `conducta.csv`, `denue.csv`,
 `reporte_mercado.csv`, `historico.xlsx` ni `clientes/`. Los regenera el corte.
-
-
-5. SI NO SE INTEGRA
--------------------
-`clientes/enerso/conducta.csv` y `clientes/enerso/denue.csv` siguen publicados
-completos y nacionales en una URL de cliente, y cada corte los reescribe así.

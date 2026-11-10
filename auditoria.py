@@ -87,6 +87,9 @@ DEBE_EXISTIR = [
      "el precio EXACTAMENTE en el tope no cumple (pacto dice 'menor a')"),
     ("index.html", "function bandaTamano(", 0,
      "índice de tamaño del DENUE"),
+    ("index.html", "pintarMapaInterno(unicas(rows))", 21,
+     "el mapa colapsa a una fila por estación: sin esto dibuja un marcador "
+     "por registro y apila hasta siete en la misma coordenada"),
     ("xml_a_csv.py", "_conservar_sin_borrar", 13,
      "el histórico y la bitácora nunca se recortan"),
     ("preparar_cliente.py", "limites_app_config", 16,

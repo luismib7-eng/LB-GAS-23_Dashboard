@@ -2448,7 +2448,15 @@ window.APP_CONFIG = {
   PRICE_MIN: 15,
   PRICE_MAX: 45,
   RADIO_KM: 5,
-  MAPA_MAX_PUNTOS: 2500,
+  /* Tope de puntos dibujados. Medido el 10 de noviembre de 2026 sobre el
+     padron real con el renderizador canvas, vista nacional, repintado por
+     paneo: con 2,500 el mapa tardaba ~350 ms y ocultaba 11,000 estaciones;
+     con 16,000 tarda ~1,070 ms y las dibuja todas (13,296 en pantalla a
+     zoom 5). Se sube porque ocultar cuatro quintas partes del padron sin
+     que el usuario lo pida es peor que 0.7 s de repintado, y el costo solo
+     aparece en la vista nacional: en una plaza caben pocas. Si el padron
+     crece por encima de este tope vuelve a aparecer el aviso de recorte. */
+  MAPA_MAX_PUNTOS: 16000,
   ELASTICIDAD_PCT_POR_10_CENTAVOS: 2,
   ESTADO_POR_DEFECTO: "",
 
@@ -5703,7 +5711,19 @@ window.APP_CONFIG = {
        Si quedara en true, el mapa dejaría de responder a paneos y zooms para
        el resto de la sesión, sin error visible. */
     try {
-      pintarMapaInterno(rows);
+      /* Una fila por estacion, SIEMPRE, y aqui dentro. Los repintados del
+         propio mapa (moveend/zoomend y popupclose) llegaban con `scoped()`
+         sin colapsar: con "todos los periodos" cada estacion se dibujaba una
+         vez por corte, hasta siete marcadores apilados en la misma coordenada,
+         cada uno con su globo y la misma razon social, y el contador rotulaba
+         "estaciones" lo que eran registros. Es el error 18 en el unico panel
+         que su correccion no toco.
+         Va aqui y no en los llamadores: colapsar en cada llamador obliga a
+         recordarlo en el siguiente que se agregue, y esa es justo la tecnica
+         que ya fallo en los errores 13, 18, 19 y 20. `unicas()` es idempotente
+         y conserva la fecha mas reciente, asi que render(), que ya manda `est`,
+         no cambia de comportamiento. */
+      pintarMapaInterno(unicas(rows));
     } finally {
       mapaPintando = false;
     }
