@@ -512,3 +512,83 @@ Este enseña el límite de esa técnica: un centinela que comprueba que una
 constante existe no comprueba que su contenido esté completo. Donde hay una
 promesa sobre los datos entregados, la auditoría tiene que medir los datos
 entregados.
+
+---
+
+## 20. La instancia del cliente entregaba el padrón nacional de conducta y del DENUE
+
+**Qué pasó.** Hallado el 9 de noviembre de 2026 en la auditoría semanal y confirmado el 10
+sobre el corte siguiente. La carpeta `clientes/enerso/` —alcance Región Occidente, 3,046
+estaciones en su catálogo— contenía `conducta.csv` **completo y nacional, copia byte a byte
+del archivo de la raíz** (5,263 filas al corte del 9 de noviembre, de las cuales 4,284 de
+estaciones fuera de Occidente) y `denue.csv` con **10,671 filas**, 8,558 de ellas fuera de
+Occidente. El DENUE lleva nombre comercial, domicilio, código postal, personal ocupado y
+metros.
+
+**Cómo se detectó.** Comparando el número de filas de los CSV de la instancia contra los de
+la raíz: `conducta.csv` tenía exactamente el mismo conteo arriba y abajo, y el `sha256`
+resultó idéntico. Después se midió la cobertura geográfica fila por fila, cruzando cada
+permiso contra la región del catálogo nacional.
+
+**Causa.** No fue una lista fija esta vez, sino una **rama de tolerancia**. El recorte se
+hacía con `filtrar_csv(origen, destino, "Estado", estados)`, y la función abría así:
+
+```python
+if not filas or columna not in filas[0]:
+    shutil.copy(origen, destino)      # <-- copia nacional silenciosa
+    return len(filas), len(filas)
+```
+
+`conducta.csv` (`Permiso CRE, Movimientos, Ultimo, …`) y `denue.csv` (`Permiso CRE, Nombre
+comercial, Direccion, CP, Personal, Metros`) **no tienen columna `Estado`**. Caían en esa
+rama, se copiaban enteros y el resumen de la corrida los listaba como `recortado` con
+`5263 → 5263 filas`: un número que se lee como "no se filtró nada" solo si uno ya sospecha.
+
+Es el **error 19 un nivel más arriba**. La corrección del 19 se aplicó a
+`preparar_subcuentas.py` y nunca se revisó si `preparar_cliente.py` tenía la misma herida.
+La tenía, por otro mecanismo.
+
+**Qué se incumplía.** El docstring del generador promete armar la carpeta con "solo los datos
+de su estado, de modo que una copia filtrada valga poco fuera de su plaza", y el bloque del
+bucle está rotulado "Datos, recortados a los estados indicados". Las dos frases eran falsas
+para los dos CSV por permiso que no traen `Estado`. El propio flujo diario documenta el
+alcance: "Region Occidente completa: es el alcance de la propuesta firmada". Regla 1.6.
+
+**Agravante: la comprobación del error 19 estaba ciega.** El bloque SUBCUENTAS de
+`auditoria.py` buscaba `subcuentas.csv` en `os.path.dirname(dirpath)`, pero el padrón vive en
+la carpeta del cliente y las subcuentas en `clientes/<cliente>/clientes/<slug>/`: son **dos**
+niveles, no uno. Con tres subcuentas activas, el bloque reportaba "No hay subcuentas que
+verificar" y salía en verde. Llevaba así desde que se escribió, el 2 de noviembre. La
+verificación de producción que cierra el error 19 se hizo a mano ese día, lo cual explica
+que nadie notara que el bloque automático no medía nada.
+
+Medidas a mano por distancia Haversine, **las tres subcuentas están limpias**: cero filas
+fuera de su radio de 15 km en los cuatro CSV por permiso. El error 19 sigue corregido; solo
+no estaba siendo vigilado.
+
+**Solución.** Tres partes:
+
+1. `filtrar_csv` levanta `ColumnaAusente` en vez de copiar el archivo completo. Una función
+   de recorte no tiene permitido degradar en copia silenciosa.
+2. `filtrar_por_permiso` recorta por `Permiso CRE` contra el **universo de permisos del
+   propio catálogo ya recortado del cliente**. El catálogo se procesa primero para tener ese
+   universo. No hay lista de nombres de archivo que mantener: si el archivo no trae `Estado`
+   pero trae `Permiso CRE`, se recorta por permiso, y si no trae ninguna de las dos, el
+   generador **aborta** en vez de entregar.
+3. `auditoria.py` incorpora el bloque **INSTANCIAS**, que mide lo entregado: para cada
+   carpeta con `catalogo_estaciones.csv`, todo CSV con columna `Permiso CRE` debe contener
+   solo permisos del catálogo de esa carpeta. Solo cuenta como fuga un permiso que el
+   catálogo nacional sí conoce y el del cliente no, para que los `PLACE/…` sin equivalencia
+   no produzcan falsos positivos. Y se arregló la ruta del bloque SUBCUENTAS, que ahora
+   busca `subcuentas.csv` en los dos niveles superiores.
+
+**Medido después del arreglo.** Instancia de prueba con alcance Jalisco + Colima: el
+`conducta.csv` y el `denue.csv` quedan recortados al universo del catálogo del cliente, con
+cero estaciones fuera del alcance en los tres CSV por permiso.
+
+**Lección.** El error 19 enseñó que la auditoría debe medir los datos entregados. Este añade
+el escalón siguiente: **una comprobación que no se ejecuta reporta en verde**. Un bloque que
+dice "nada que verificar" merece la misma sospecha que uno que falla, porque un conteo de
+cero puede significar "está limpio" o "no miré". Las dos cosas se ven igual en el reporte.
+Desde ahora, cuando un bloque reporte que no encontró nada que revisar, hay que comprobar a
+mano que de verdad no haya nada.

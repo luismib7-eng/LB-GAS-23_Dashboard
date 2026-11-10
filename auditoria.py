@@ -95,6 +95,10 @@ DEBE_EXISTIR = [
      "la bitacora de conducta se recorta al radio de la subcuenta"),
     ("preparar_subcuentas.py", '"denue.csv"', 19,
      "el indice del DENUE se recorta al radio de la subcuenta"),
+    ("preparar_cliente.py", "class ColumnaAusente", 20,
+     "recortar por una columna ausente ya no copia el archivo nacional completo"),
+    ("preparar_cliente.py", "def filtrar_por_permiso(", 20,
+     "conducta.csv y denue.csv se recortan por permiso contra el catalogo del cliente"),
     ("sw.js", "openstreetmap\\.org$", 0,
      "coincidencia de host anclada en el service worker"),
 ]
@@ -1091,8 +1095,20 @@ def bloque_subcuentas(raiz, R):
 
     revisadas = fugas = 0
     for dirpath, _dn, fn in os.walk(os.path.join(raiz, "clientes")):
-        pad = os.path.join(os.path.dirname(dirpath), "subcuentas.csv")
-        if not os.path.exists(pad):
+        # El padron vive en la carpeta del CLIENTE y las subcuentas en
+        # `clientes/<cliente>/clientes/<slug>/`: hay DOS niveles entre el slug
+        # y subcuentas.csv. Buscar solo uno dejo este bloque sin revisar nada,
+        # reportando «No hay subcuentas que verificar» con tres activas. Una
+        # comprobacion que no comprueba es peor que ninguna: da por verificado
+        # lo que nadie midio. Hallado el 9 de noviembre de 2026.
+        pad = None
+        for arriba in (os.path.dirname(dirpath),
+                       os.path.dirname(os.path.dirname(dirpath))):
+            cand = os.path.join(arriba, "subcuentas.csv")
+            if os.path.exists(cand):
+                pad = cand
+                break
+        if not pad:
             continue
         slug = os.path.basename(dirpath)
         fila = None
@@ -1148,6 +1164,77 @@ def bloque_subcuentas(raiz, R):
               "%d subcuenta(s) con recorte fisico verificado por distancia" % revisadas)
     elif not revisadas:
         R.add(AVISO, "Subcuentas", "No hay subcuentas que verificar")
+
+
+# ──────────────────────────────────────────────────────────────────
+#  INSTANCIAS — que el recorte del CLIENTE también sea físico
+#
+#  Hallazgo del 9 de noviembre de 2026 (error 20). `preparar_cliente.py`
+#  recortaba por la columna `Estado`, y `filtrar_csv` copiaba el archivo
+#  nacional COMPLETO cuando esa columna no existía. `conducta.csv` y
+#  `denue.csv` no la tienen: viajaban enteros dentro de la carpeta del
+#  cliente —comportamiento de precio de todo el padrón y el DENUE con
+#  domicilio, CP y personal ocupado— mientras el resumen del generador los
+#  listaba como «recortado».
+#
+#  Es el error 19 un nivel más arriba, y la lección es la misma: donde hay
+#  una promesa sobre los datos entregados, la comprobación mide los datos
+#  entregados. El alcance del cliente no se lee de una constante ni de
+#  APP_CONFIG —que no lo guarda—: se deduce de SU propio catálogo, que es
+#  el archivo que define qué estaciones le pertenecen.
+#
+#  Contra los falsos positivos: solo cuenta como fuga un permiso que el
+#  catálogo NACIONAL sí conoce y el del cliente no. Los permisos que no
+#  resuelven en ningún catálogo —los `PLACE/…`— son otro asunto, ya
+#  cubierto por el bloque de coherencia, y no se cuentan aquí.
+# ──────────────────────────────────────────────────────────────────
+def bloque_instancias(raiz, R):
+    nac = filas(os.path.join(raiz, "catalogo_estaciones.csv"))
+    if not nac:
+        return
+    conocidos = {_norm_permiso(r.get("Permiso CRE")) for r in nac}
+    base = os.path.join(raiz, "clientes")
+    if not os.path.isdir(base):
+        R.add(AVISO, "Instancias", "No hay carpeta clientes/")
+        return
+    revisadas = fugas = 0
+    for dirpath, _dn, fn in os.walk(base):
+        if "catalogo_estaciones.csv" not in fn:
+            continue
+        rel = os.path.relpath(dirpath, raiz)
+        cat = filas(os.path.join(dirpath, "catalogo_estaciones.csv"))
+        if not cat:
+            continue
+        universo = {_norm_permiso(r.get("Permiso CRE")) for r in cat}
+        if len(universo) >= len(conocidos):
+            R.add(AVISO, "Instancias",
+                  "%s trae el catálogo nacional completo" % rel,
+                  "Instancia de alcance nacional: no hay recorte que verificar.")
+            continue
+        revisadas += 1
+        for arch in sorted(f for f in fn if f.endswith(".csv")):
+            if arch == "catalogo_estaciones.csv":
+                continue
+            fs = filas(os.path.join(dirpath, arch))
+            if not fs or "Permiso CRE" not in fs[0]:
+                continue       # histórico y reporte de mercado son agregados
+            fuera = {p for p in (_norm_permiso(r.get("Permiso CRE")) for r in fs)
+                     if p in conocidos and p not in universo}
+            if fuera:
+                fugas += 1
+                R.add(CRITICO, "Instancias",
+                      "%s/%s entrega %d estación(es) fuera del alcance del cliente"
+                      % (rel, arch, len(fuera)),
+                      "Su catálogo tiene %d estaciones y este archivo trae %d que no "
+                      "están en él. El recorte de la instancia no es físico: con la "
+                      "URL se descarga el archivo nacional entero. Es el error 20."
+                      % (len(universo), len(fuera)), 20)
+    if revisadas and not fugas:
+        R.add(BIEN, "Instancias",
+              "%d instancia(s) con recorte físico verificado contra su propio catálogo"
+              % revisadas)
+    elif not revisadas:
+        R.add(AVISO, "Instancias", "No hay instancias recortadas que verificar")
 
 
 def imprimir(R, markdown=False):
@@ -1206,8 +1293,8 @@ def main():
     R = Reporte()
     bloques = [bloque_estructura, bloque_centinela, bloque_sintaxis,
                bloque_referencias, bloque_series, bloque_padron, bloque_coherencia,
-               bloque_codigo, bloque_clientes, bloque_subcuentas,
-               bloque_flujo, bloque_git]
+               bloque_codigo, bloque_clientes, bloque_instancias,
+               bloque_subcuentas, bloque_flujo, bloque_git]
     if "--sin-navegador" not in sys.argv:
         bloques.insert(2, bloque_funcional)
     for fn in bloques:

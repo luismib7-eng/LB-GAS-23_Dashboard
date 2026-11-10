@@ -55,15 +55,52 @@ def normaliza_permiso(p):
     return k[4:] if k.startswith("CNE/") else k
 
 
+class ColumnaAusente(Exception):
+    """El CSV no trae la columna por la que se iba a recortar."""
+
+
 def filtrar_csv(origen, destino, columna, valor):
-    """Copia un CSV conservando solo las filas de un estado. Devuelve (leídas, escritas)."""
+    """Copia un CSV conservando solo las filas de un estado. Devuelve (leídas, escritas).
+
+    Si el CSV no trae la columna de recorte, LEVANTA `ColumnaAusente` en vez de
+    copiar el archivo nacional completo. Esa copia silenciosa fue el error 20:
+    `conducta.csv` y `denue.csv` no tienen columna `Estado`, caían en esta rama
+    y viajaban enteros —nacionales— dentro de la carpeta de cada cliente,
+    mientras el resumen del generador los listaba como «recortado».
+    """
     with io.open(origen, encoding="utf-8-sig", newline="") as fh:
         filas = list(csv.DictReader(fh))
-    if not filas or columna not in filas[0]:
+    if not filas:
         shutil.copy(origen, destino)
-        return len(filas), len(filas)
+        return 0, 0
+    if columna not in filas[0]:
+        raise ColumnaAusente(columna)
     quiere = set(v.strip().lower() for v in (valor if isinstance(valor, (list, tuple)) else [valor]) if v.strip())
     conservadas = [f for f in filas if (f.get(columna) or "").strip().lower() in quiere]
+    with io.open(destino, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(filas[0].keys()), lineterminator="\n")
+        w.writeheader()
+        w.writerows(conservadas)
+    return len(filas), len(conservadas)
+
+
+def filtrar_por_permiso(origen, destino, universo):
+    """Recorta un CSV por `Permiso CRE` contra el universo ya recortado.
+
+    Para los archivos que no traen `Estado` —`conducta.csv`, `denue.csv` y
+    cualquier archivo nuevo del ETL con la misma forma— el universo del cliente
+    es el conjunto de permisos que quedaron en SU catálogo. Así el recorte es
+    físico y no depende de una columna que el archivo no tiene.
+    """
+    with io.open(origen, encoding="utf-8-sig", newline="") as fh:
+        filas = list(csv.DictReader(fh))
+    if not filas:
+        shutil.copy(origen, destino)
+        return 0, 0
+    if "Permiso CRE" not in filas[0]:
+        raise ColumnaAusente("Permiso CRE")
+    conservadas = [f for f in filas
+                   if normaliza_permiso(f.get("Permiso CRE")) in universo]
     with io.open(destino, "w", encoding="utf-8", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(filas[0].keys()), lineterminator="\n")
         w.writeheader()
@@ -314,8 +351,17 @@ def main():
     estados = [e.strip() for e in args.estados.split(",") if e.strip()] if args.estados \
         else ([args.estado] if args.estado else [])
     alcance = ", ".join(estados) if estados else "nacional"
+    # El catálogo se recorta PRIMERO: de él sale el universo de permisos del
+    # cliente, que es con lo que se recortan los archivos que no traen columna
+    # `Estado`. Error 20: recortar solo por `Estado` dejaba pasar enteros los
+    # archivos por permiso, y la lista fija de nombres es justo la técnica que
+    # ya falló en los errores 13, 18 y 19. Aquí no hay lista: si el archivo no
+    # trae `Estado` pero trae `Permiso CRE`, se recorta por permiso.
+    orden = (["catalogo_estaciones.csv"] +
+             [a for a in DATOS if a != "catalogo_estaciones.csv"])
+    universo = None
     resumen = []
-    for archivo in DATOS:
+    for archivo in orden:
         origen = os.path.join(args.origen, archivo)
         destino = os.path.join(args.salida, archivo)
         if not os.path.exists(origen):
@@ -331,8 +377,25 @@ def main():
             shutil.copy(origen, destino)      # son agregados, no revelan estaciones
             leidas = escritas = 0
         else:
-            leidas, escritas = filtrar_csv(origen, destino, "Estado", estados)
+            try:
+                leidas, escritas = filtrar_csv(origen, destino, "Estado", estados)
+            except ColumnaAusente:
+                if universo is None:
+                    sys.exit("No se pudo recortar %s: no trae columna `Estado` y el "
+                             "catálogo del cliente aún no se había generado. Revisa "
+                             "el orden de recorte." % archivo)
+                try:
+                    leidas, escritas = filtrar_por_permiso(origen, destino, universo)
+                except ColumnaAusente:
+                    sys.exit("No se pudo recortar %s: no trae `Estado` ni `Permiso "
+                             "CRE`. Antes se copiaba completo y nacional dentro de la "
+                             "carpeta del cliente; eso fue el error 20. Decide el "
+                             "recorte antes de entregarlo." % archivo)
         resumen.append((archivo, leidas, escritas, "recortado"))
+        if archivo == "catalogo_estaciones.csv":
+            with io.open(destino, encoding="utf-8-sig", newline="") as fh:
+                universo = {normaliza_permiso(f.get("Permiso CRE"))
+                            for f in csv.DictReader(fh)}
 
     # 4. Configuración: se reemplaza el bloque APP_CONFIG dentro del index.
     permisos = [normaliza_permiso(p) for p in args.permisos.split(",") if p.strip()]

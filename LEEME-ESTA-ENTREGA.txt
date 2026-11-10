@@ -1,42 +1,39 @@
-LB GAS 23 — Entrega v2026-11-02_err19
+LB GAS 23 — Entrega v2026-11-10_err20
 =====================================
-Origen: commit 57d77d6 (Precios 2026-11-01). Auditoría del lunes 2 nov 2026.
+Origen: commit 1715400 (Precios 2026-11-09, 23:11 UTC). Auditoría del lunes
+9 nov 2026, reconfirmada el 10 sobre el corte siguiente.
 
-QUÉ CAMBIA (dos archivos de código y uno de documentación)
+QUE TRAE
+--------
+Corrección del error 20: la carpeta de cliente entregaba el padrón nacional de
+`conducta.csv` y de `denue.csv`. Tres archivos cambiados:
 
-1. preparar_subcuentas.py
-   DATOS_RECORTABLES ahora incluye conducta.csv y denue.csv. Antes solo
-   recortaba fallback.csv y catalogo_estaciones.csv, y las subcuentas
-   entregaban esos dos archivos COMPLETOS, nacionales: 46,620 filas de
-   estaciones fuera de su radio en las tres subcuentas publicadas.
-   El flujo diario regenera clientes/ en cada corte: el próximo corte
-   corrige los datos publicados sin tocar nada a mano.
+  preparar_cliente.py      el arreglo
+  auditoria.py             la comprobación que lo habría detectado
+  03-ERRORES-RESUELTOS.md  el registro del error 20
 
-2. auditoria.py
-   - Bloque nuevo SUBCUENTAS: recorre cada carpeta de subcuenta, toma todo
-     CSV con columna "Permiso CRE" y mide la distancia Haversine de cada
-     estación al permiso centro. CRÍTICO si hay filas más allá del radio de
-     datos. No lee la constante: mide el archivo entregado. Un CSV nuevo del
-     ETL queda cubierto el día que aparece.
-   - Dos centinelas nuevos (error 19) sobre preparar_subcuentas.py.
-   Bloques: 12 (antes 11).
+Los demás archivos van idénticos a los publicados, para reemplazar de golpe sin
+dejar mezcla de versiones.
 
-3. 03-ERRORES-RESUELTOS.md
-   Error 19 documentado, con la lección: un centinela que comprueba que una
-   constante existe no comprueba que su contenido esté completo.
+QUE NO TRAE
+-----------
+Ningún dato. Ni `historico.csv` ni `movimientos.csv` (irrecuperables, regla 1.2),
+ni `fallback.csv`, `catalogo_estaciones.csv`, `conducta.csv`, `denue.csv`,
+`reporte_mercado.csv`, `historico.xlsx` ni `clientes/`. Todos los regenera el
+corte diario.
 
-NO INCLUIDO, A PROPÓSITO
-   historico.csv, movimientos.csv, fallback.csv, catalogo_estaciones.csv,
-   conducta.csv, denue.csv, reporte_mercado.csv, historico.xlsx y clientes/.
-   Las dos primeras son irrecuperables (regla 1.2) y el resto las regenera
-   el corte diario. Esta entrega es solo código, configuración y documentación.
+COMO INTEGRAR
+-------------
+1. Descomprime sobre la raíz del repositorio, reemplazando.
+2. Sube. El próximo corte diario regenera `clientes/enerso/` con el generador
+   corregido y reescribe los dos CSV ya recortados. No hace falta tocar datos
+   a mano.
+3. Después del corte, corre `python3 auditoria.py . --markdown` y confirma que
+   el bloque INSTANCIAS salga en verde.
 
-VERIFICACIÓN HECHA ANTES DE ENTREGAR
-   - Los 19 centinelas de código presentes, los 8 patrones prohibidos ausentes.
-   - Los 6 scripts de Python compilan; JS del index.html y de las 4 instancias
-     válido; workflow YAML válido; manifest con sus iconos.
-   - El sitio abre en Chromium sin un solo error de JavaScript y las cifras que
-     pinta se recalcularon en Python: tabla 13,853 y 13,855, panel del tope
-     82.6/4.0/13.4 %, radio de 5 km con 70 competidores y lugar 20 de 71,
-     promedio nacional $23.70, 1,418 grupos operadores con dos o más
-     estaciones. Todas coinciden.
+QUE PASA SI NO SE INTEGRA
+-------------------------
+`clientes/enerso/conducta.csv` y `clientes/enerso/denue.csv` siguen publicados
+completos y nacionales en una URL de cliente, y cada corte diario los vuelve a
+escribir así. Al corte del 9 de noviembre eran 4,284 y 8,558 filas de estaciones
+fuera de la Región Occidente contratada.
