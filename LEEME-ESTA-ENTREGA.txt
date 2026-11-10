@@ -1,68 +1,87 @@
-LB GAS 23 — Entrega v2026-11-10b_mapa
-=====================================
-Origen: commit f29b020 (tu subida del 10 nov). Corrige el error 21.
+LB GAS 23 — Entrega v2026-11-10d_denue-rehecho
+==============================================
+Origen: commit f29b020. Cierra los errores 21 y 22.
 
-Dos archivos cambian: index.html y auditoria.py. Los demas van identicos, para
-reemplazar de golpe sin dejar mezcla de versiones.
-
-
-1. EL FALLO DEL MAPA TACTICO
-----------------------------
-Con "Todos los periodos" y despues de mover el mapa, cada estacion se dibujaba
-una vez por corte: siete marcadores apilados en la misma coordenada, cada uno
-con su globo y la misma razon social con el precio de un dia distinto. Censado
-en el navegador:
-
-                          antes            despues
-  Guadalajara zoom 15     112 marcadores   16 marcadores
-                          16 posiciones    16 posiciones
-                          7 apilados       0 apilados
-  Guadalajara zoom 13     1,344            192
-  Estaciones propias      14               2
-  Vista nacional          2,499 dibujadas  13,296 dibujadas
-
-Causa 1: el mapa tiene sus propios repintados (`moveend/zoomend` y
-`popupclose`) y llamaban `pintarMapa(scoped())` con los cortes sin colapsar.
-`render()` si mandaba `est` ya colapsado, por eso el primer dibujo salia bien y
-se degradaba al primer paneo. Ahora el colapso vive DENTRO de `pintarMapa`
-—`pintarMapaInterno(unicas(rows))`— para que ningun llamador futuro lo tenga
-que recordar.
-
-Causa 2: `MAPA_MAX_PUNTOS` estaba en 2,500 contra 13,846 estaciones. A vista
-nacional el mapa escondia cuatro quintas partes del padron. Medido con el
-renderizador canvas sobre el padron real, repintado por paneo a zoom 5:
-
-  tope  2,500 ->  2,499 marcadores, ~350 ms
-  tope 16,000 -> 13,296 marcadores, ~1,070 ms
-
-Se sube a 16,000. El costo solo aparece en la vista nacional; en una plaza
-caben pocas estaciones.
-
-`auditoria.py` suma el centinela `pintarMapaInterno(unicas(rows))` atado al
-error 21, para que la correccion no se pierda como paso con la del error 15.
+ESTA ENTREGA SI LLEVA UN DATO: denue.csv. Lee el punto 4.
 
 
-2. LO QUE NO ES DEL MAPA, Y NO SE TOCO
---------------------------------------
-Quedan 4 coordenadas del catalogo compartidas por dos permisos distintos (8
-estaciones). En dos de ellas la razon social es la misma —SERVICIO EFIGAS y
-LUNA GAS— porque la CNE publica dos permisos para el mismo sitio. Ahi seguiran
-viendose dos marcadores encimados: es el padron, no el dibujo. Separarlos unos
-metros seria mover una estacion de donde la fuente dice que esta. Si lo
-prefieres asi, se hace, pero que quede dicho.
+1. EL DENUE QUE MANDASTE: SI ES EL CORRECTO
+-------------------------------------------
+INEGI_DENUE_09112026: 14,130 establecimientos, el 100% de la clase SCIAN
+468411 "Comercio al por menor de gasolina y diesel", las 32 entidades, el
+100% con coordenada y ninguna fuera de la caja de Mexico. Es nacional y esta
+al dia (9 de noviembre). Sirve tal cual.
 
 
-3. COMO INTEGRAR
+2. EL CRUCE SE REHIZO CON ASIGNACION UNICA
+------------------------------------------
+El cruce viejo le colgaba a cada permiso TODO establecimiento a menos de
+150 m, asi que en una avenida con dos gasolineras cercanas el mismo negocio
+se asignaba a los dos. Ahora se generan todos los pares, se ordenan por
+distancia y se asignan uno a uno: gana el par mutuamente mas cercano y lo que
+no alcanza pareja se queda SIN nombre, que es la respuesta honesta.
+
+                                    antes        ahora
+  Establecimientos en varios permisos  303          2  (fichas repetidas del INEGI)
+  Permisos afectados                   611          4
+  Cobertura en pantalla          10,514 (76%)  10,248 (74%)
+  Distancia del cruce            no se guardaba  mediana 31 m, p90 76 m, max 150 m
+
+Tus cuatro casos de Zapopan:
+
+  PL/1462   COMBUSTIBLES PALMA REAL SA DE CV  -> COMBUSTIBLES PALMA REAL (48 m)
+  PL/19030  ECOESTACION DE COMBUSTIBLES       -> su razon social (ya no PALMA REAL)
+  PL/10100  OPERADORA AVIACION SA DE CV       -> CANELO ENERGY (38 m)
+  PL/465    PETROMAX SA DE CV                 -> su razon social (ya no CANELO)
+
+Solo 70 nombres cambian respecto al archivo anterior: es una correccion
+puntual, no un barrido.
+
+
+3. ERROR 21 — el mapa dibujaba un marcador por REGISTRO
+-------------------------------------------------------
+Con "todos los periodos" y tras mover el mapa, cada estacion se dibujaba una
+vez por corte. Guadalajara z15: 112 marcadores en 16 posiciones, 7 apilados
+-> ahora 16 en 16, cero apilados. Las propias, 14 -> 2. Vista nacional,
+2,499 de 13,846 -> 13,296, porque MAPA_MAX_PUNTOS sube de 2,500 a 16,000
+(~350 ms contra ~1,070 ms, medido, y solo en la vista nacional).
+
+
+4. POR QUE ESTA VEZ EL ZIP SI LLEVA UN DATO
+-------------------------------------------
+Las entregas anteriores decian que denue.csv "lo regenera el corte diario".
+ERA FALSO, y lo corrijo: el flujo no lo menciona y xml_a_csv.py no lo
+escribe. Se subio UNA vez, el 16 de octubre de 2026, y nadie lo volvio a
+tocar. Por eso el cruce malo estuvo 24 dias en pantalla.
+
+Como nadie lo regenera, el arreglo no llega a produccion si no va el archivo.
+Por eso denue.csv viaja en este ZIP. Los demas datos siguen fuera, esos si
+los regenera el corte: historico.csv, movimientos.csv, fallback.csv,
+catalogo_estaciones.csv, conducta.csv, reporte_mercado.csv, historico.xlsx y
+clientes/.
+
+Vuelve tambien construir_denue_csv.py, que ayer quitamos por no ser
+ejecutable. Ahora toma argumentos y corre:
+
+    python3 construir_denue_csv.py --denue INEGI_DENUE_09112026.csv \
+            --catalogo catalogo_estaciones.csv --salida denue.csv
+
+Sin el, denue.csv seria un archivo que nadie sabe rehacer. Si prefieres
+mantenerlo fuera del repo publico, borralo y guardalo con el DENUE crudo.
+
+
+5. DEFENSAS QUE QUEDAN EN EL CODIGO
+-----------------------------------
+index.html: si un establecimiento del DENUE sigue colgado de varios permisos
+con razones sociales distintas, no usa ninguno de sus campos y cae a la razon
+social. Hoy eso aplica a 2 estaciones y se declara en pantalla.
+
+auditoria.py: mide el denue.csv ENTREGADO y alerta si vuelven los
+establecimientos compartidos; ademas reporta la distancia del cruce.
+Centinelas: 26.
+
+
+6. COMO INTEGRAR
 ----------------
-Descomprime sobre la raiz, reemplazando. Esta entrega no da de baja ningun
-archivo, asi que no hace falta `git rm`.
-
-Sube, y despues del siguiente corte corre `python3 auditoria.py . --markdown`:
-el bloque Centinela debe decir 25 correcciones.
-
-
-4. QUE NO TRAE
---------------
-Ningun dato: ni `historico.csv` ni `movimientos.csv` (irrecuperables, regla
-1.2), ni `fallback.csv`, `catalogo_estaciones.csv`, `conducta.csv`, `denue.csv`,
-`reporte_mercado.csv`, `historico.xlsx` ni `clientes/`. Los regenera el corte.
+Descomprime sobre la raiz, reemplazando. No da de baja ningun archivo. Sube.
+Despues del siguiente corte corre `python3 auditoria.py . --markdown`.

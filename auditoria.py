@@ -87,6 +87,8 @@ DEBE_EXISTIR = [
      "el precio EXACTAMENTE en el tope no cumple (pacto dice 'menor a')"),
     ("index.html", "function bandaTamano(", 0,
      "índice de tamaño del DENUE"),
+    ("index.html", "d.hermanos", 22,
+     "no atribuye un nombre del DENUE compartido por dos estaciones vecinas"),
     ("index.html", "pintarMapaInterno(unicas(rows))", 21,
      "el mapa colapsa a una fila por estación: sin esto dibuja un marcador "
      "por registro y apila hasta siete en la misma coordenada"),
@@ -799,6 +801,48 @@ def bloque_coherencia(raiz, R):
                   "reporte_mercado.csv no trae las columnas de percentiles",
                   "El ETL vigente las escribe; si faltan, el archivo es de una "
                   "versión anterior.")
+
+    # Error 22: el cruce del DENUE se hizo por cercania y colgaba un mismo
+    # establecimiento de varios permisos (303 sobre 611, el 5.7%), asi que el
+    # tablero rotulaba una estacion con el nombre de su vecina. La comprobacion
+    # mide el archivo ENTREGADO, no lee la constante del generador: cada
+    # establecimiento debe pertenecer a un solo permiso.
+    dn = filas(os.path.join(raiz, "denue.csv"))
+    if dn:
+        grupos = collections.defaultdict(list)
+        for r in dn:
+            nom = (r.get("Nombre comercial") or "").strip()
+            if not nom:
+                continue        # sin nombre no hay nada que atribuir mal
+            grupos[(nom, (r.get("Direccion") or "").strip(),
+                    (r.get("CP") or "").strip())].append(r.get("Permiso CRE"))
+        multi = {k: v for k, v in grupos.items() if len(v) > 1}
+        afectados = sum(len(v) for v in multi.values())
+        # El INEGI publica alguna ficha repetida, asi que un punado es normal;
+        # lo que delata un cruce por cercania sin asignacion unica son cientos.
+        if afectados > 25:
+            R.add(ALERTA, "Coherencia",
+                  "denue.csv: %d establecimiento(s) colgado(s) de varios permisos"
+                  % len(multi),
+                  "%d permisos afectados. El tablero rotularia una estacion con el "
+                  "nombre de su vecina. Regenera denue.csv con asignacion unica "
+                  "(construir_denue_csv.py). Es el error 22." % afectados, 22)
+        else:
+            R.add(BIEN, "Coherencia",
+                  "denue.csv: asignacion unica (%d permiso(s) en fichas repetidas "
+                  "del INEGI)" % afectados)
+        # La distancia del cruce queda escrita en el archivo: es auditable.
+        met = []
+        for r in dn:
+            try:
+                met.append(int(r.get("Metros") or 0))
+            except ValueError:
+                pass
+        if met:
+            met.sort()
+            R.add(AVISO, "Coherencia",
+                  "denue.csv: cruce a %d m de mediana, %d m el p90, %d m el maximo"
+                  % (met[len(met) // 2], met[int(len(met) * 0.9)], met[-1]))
 
     fb = filas(os.path.join(raiz, "fallback.csv"))
     if fb and permisos:

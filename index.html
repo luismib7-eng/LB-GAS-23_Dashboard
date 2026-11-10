@@ -3425,6 +3425,11 @@ window.APP_CONFIG = {
   var denueIdx = null;
   var denueAplicados = 0;
   var denueDescartados = 0;
+  /* Clave de permiso, NO contador de filas: `applyDenue` recorre registros y
+     el padron trae siete cortes, asi que contar filas multiplicaba por siete
+     y rotulaba "estaciones" lo que eran registros. Es la trampa de etiquetado
+     que ya llego a pantalla una vez. */
+  var denueAmbiguos = {};
 
   /* El DENUE cuelga de algunos permisos de estación registros que NO son la
      estación: "OFICINAS ADMINSTRATIVA", corporativos, inmobiliarias, bodegas.
@@ -3515,18 +3520,32 @@ window.APP_CONFIG = {
     var cPrs = campo[normText("Personal")];
     if (!cPer) return null;
     var idx = {};
+    /* El cruce del DENUE se hizo por cercania (tolerancia de 150 m), asi que
+       un mismo ESTABLECIMIENTO quedo colgado de hasta tres permisos distintos:
+       303 establecimientos sobre 611 permisos, el 5.7% del enriquecimiento.
+       Se agrupa por establecimiento para poder detectarlo mas abajo. */
+    var porEstab = {};
     denueDescartados = 0;
     parsed.rows.forEach(function (r) {
       var k = permitKey(r[cPer]);
       if (!k) return;
       var nom = cNom ? String(r[cNom] || "").trim() : "";
       if (!denueEsEstacion(nom)) { denueDescartados++; return; }
+      var dir = cDir ? String(r[cDir] || "").trim() : "";
+      var cp = cCp ? String(r[cCp] || "").trim() : "";
       idx[k] = {
         comercial: nom,
-        direccion: cDir ? String(r[cDir] || "").trim() : "",
-        cp: cCp ? String(r[cCp] || "").trim() : "",
+        direccion: dir,
+        cp: cp,
         tamano: bandaTamano(cPrs ? r[cPrs] : "")
       };
+      var estab = normText(nom) + "|" + normText(dir) + "|" + cp;
+      (porEstab[estab] || (porEstab[estab] = [])).push(k);
+    });
+    Object.keys(porEstab).forEach(function (e) {
+      var ks = porEstab[e];
+      if (ks.length < 2) return;
+      ks.forEach(function (k) { if (idx[k]) idx[k].hermanos = ks; });
     });
     return idx;
   }
@@ -3537,10 +3556,42 @@ window.APP_CONFIG = {
 
   function applyDenue(rows) {
     denueAplicados = 0;
+    denueAmbiguos = {};
     if (!denueIdx || !rows) return rows;
+    /* Razon social por permiso, para resolver los establecimientos que el
+       cruce por cercania dejo colgados de mas de un permiso. `applyCatalog`
+       ya corrio, asi que `estacion` esta puesta. */
+    var razon = {};
+    rows.forEach(function (r) {
+      var k = permitKey(r.permiso);
+      if (k && r.estacion) razon[k] = normText(r.estacion);
+    });
     rows.forEach(function (r) {
       var d = denueIdx[permitKey(r.permiso)];
       if (!d) return;
+      /* Un establecimiento del DENUE colgado de varios permisos CON RAZONES
+         SOCIALES DISTINTAS son estaciones vecinas, no la misma: el cruce se
+         hizo por cercania y el nombre pertenece a una sola de ellas. Pintarlo
+         en las dos pone el mismo rotulo sobre estaciones distintas, que es lo
+         que se vio en Zapopan: COMBUSTIBLES PALMA REAL en el mapa dos veces,
+         una de ellas sobre ECOESTACION DE COMBUSTIBLES, a 145 m. No hay forma
+         de saber cual es la buena, asi que no se usa NINGUN campo de ese
+         registro y se cae a la razon social, que si es oficial (regla 1.1:
+         mejor sin nombre comercial que con el ajeno).
+         Cuando la razon social coincide es una sola estacion con dos permisos
+         y el nombre si aplica a las dos: eso no se toca. */
+      if (d.hermanos) {
+        var vistas = {}, distintas = 0;
+        d.hermanos.forEach(function (k) {
+          var rs = razon[k];
+          if (rs && !vistas[rs]) { vistas[rs] = true; distintas++; }
+        });
+        if (distintas > 1) {
+          denueAmbiguos[permitKey(r.permiso)] = true;
+          indexRow(r);
+          return;
+        }
+      }
       if (d.comercial) r.comercial = d.comercial;
       /* El padrón de precios trae Direccion vacía; el catálogo rara vez la
          completa. Solo se escribe si sigue vacía, nunca se pisa un dato
@@ -3751,6 +3802,13 @@ window.APP_CONFIG = {
       if (denueDescartados) {
         nota.push(denueDescartados.toLocaleString("es-MX") +
                   " registros del DENUE descartados por no ser la estación");
+      }
+      /* Lo que se dejo sin nombre comercial a proposito, por no poder
+         atribuirlo. Se declara para que no parezca cobertura perdida. */
+      var nAmbiguos = Object.keys(denueAmbiguos).length;
+      if (nAmbiguos) {
+        nota.push(nAmbiguos.toLocaleString("es-MX") +
+                  " estaciones sin nombre comercial: el DENUE lo comparte con una vecina");
       }
     }
     if (quality.duplicados) nota.push(quality.duplicados + " permisos repetidos fusionados");
