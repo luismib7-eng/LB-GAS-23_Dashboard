@@ -5651,7 +5651,19 @@ window.APP_CONFIG = {
        Si quedara en true, el mapa dejaría de responder a paneos y zooms para
        el resto de la sesión, sin error visible. */
     try {
-      pintarMapaInterno(rows);
+      /* Una fila por estacion, SIEMPRE, y aqui dentro. Los repintados del
+         propio mapa (moveend/zoomend y popupclose) llegaban con `scoped()`
+         sin colapsar: con "todos los periodos" cada estacion se dibujaba una
+         vez por corte, hasta siete marcadores apilados en la misma coordenada,
+         cada uno con su globo y la misma razon social, y el contador rotulaba
+         "estaciones" lo que eran registros. Es el error 18 en el unico panel
+         que su correccion no toco.
+         Va aqui y no en los llamadores: colapsar en cada llamador obliga a
+         recordarlo en el siguiente que se agregue, y esa es justo la tecnica
+         que ya fallo en los errores 13, 18, 19 y 20. `unicas()` es idempotente
+         y conserva la fecha mas reciente, asi que render(), que ya manda `est`,
+         no cambia de comportamiento. */
+      pintarMapaInterno(unicas(rows));
     } finally {
       mapaPintando = false;
     }
