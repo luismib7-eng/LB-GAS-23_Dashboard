@@ -5804,17 +5804,48 @@ window.APP_CONFIG = {
 
     var lienzo = L.canvas({ padding: 0.3 });
 
+    /* Estaciones que comparten EXACTAMENTE la misma coordenada.
+       La CNE publica dos permisos para un mismo sitio —SERVICIO EFIGAS y
+       LUNA GAS son el caso claro, con la misma razon social dos veces— y
+       tambien hay sitios con dos razones sociales distintas. Dibujar un
+       circulo encima de otro dejaba a la segunda estacion INALCANZABLE a
+       cualquier zoom: el de arriba se lleva todos los clics y el de abajo no
+       existe para el usuario. Hoy son 4 coordenadas y 8 estaciones.
+       No se separan unos metros: eso seria moverla de donde la fuente dice
+       que esta, y la regla 1.1 va primero. Se dibuja UN marcador en la
+       coordenada que la fuente publica, un poco mas grande, y su globo
+       lista las estaciones que hay ahi. La posicion sigue siendo la oficial
+       y ninguna estacion queda escondida.
+       Ojo: el contador de `#mapSub` sigue contando ESTACIONES, no
+       marcadores, que es lo que el usuario espera leer. */
+    var porCoord = {};
     visibles.forEach(function (r) {
       if (r._own) return;
+      var k = r.lat + "," + r.lon;
+      (porCoord[k] || (porCoord[k] = [])).push(r);
+    });
+
+    Object.keys(porCoord).forEach(function (k) {
+      var grupo = porCoord[k];
+      var r = grupo[0];
+      var varias = grupo.length > 1;
+      var html = varias
+        ? '<p class="pop__nombre">' + grupo.length +
+          " estaciones en esta coordenada</p>" +
+          '<p class="pop__meta">La CNE publica mas de un permiso para este ' +
+          "sitio. Se muestran todas; la ubicacion es la que publica la " +
+          "fuente.</p>" +
+          grupo.map(function (x) { return popupEstacion(x, prod); }).join("")
+        : popupEstacion(r, prod);
       L.circleMarker([r.lat, r.lon], {
         renderer: lienzo,
-        radius: 4.5,
-        weight: 1,
+        radius: varias ? 6.5 : 4.5,
+        weight: varias ? 2 : 1,
         color: colorSemaforo(r, prod),
         fillColor: colorSemaforo(r, prod),
         fillOpacity: .55,
         opacity: .9
-      }).bindPopup(popupEstacion(r, prod), { className: "pop__wrap" }).addTo(capaCompetencia);
+      }).bindPopup(html, { className: "pop__wrap" }).addTo(capaCompetencia);
     });
 
     var radio = Number(CFG.RADIO_KM || 0);

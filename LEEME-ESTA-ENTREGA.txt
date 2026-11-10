@@ -1,87 +1,57 @@
-LB GAS 23 — Entrega v2026-11-10d_denue-rehecho
-==============================================
-Origen: commit f29b020. Cierra los errores 21 y 22.
+LB GAS 23 — Entrega v2026-11-10e_colisiones
+===========================================
+Origen: commit del corte Precios 2026-11-10. Corrige el error 23.
 
-ESTA ENTREGA SI LLEVA UN DATO: denue.csv. Lee el punto 4.
-
-
-1. EL DENUE QUE MANDASTE: SI ES EL CORRECTO
--------------------------------------------
-INEGI_DENUE_09112026: 14,130 establecimientos, el 100% de la clase SCIAN
-468411 "Comercio al por menor de gasolina y diesel", las 32 entidades, el
-100% con coordenada y ninguna fuera de la caja de Mexico. Es nacional y esta
-al dia (9 de noviembre). Sirve tal cual.
+Cambian index.html y auditoria.py. Los demas van identicos. No da de baja
+ningun archivo y no lleva datos.
 
 
-2. EL CRUCE SE REHIZO CON ASIGNACION UNICA
-------------------------------------------
-El cruce viejo le colgaba a cada permiso TODO establecimiento a menos de
-150 m, asi que en una avenida con dos gasolineras cercanas el mismo negocio
-se asignaba a los dos. Ahora se generan todos los pares, se ordenan por
-distancia y se asignan uno a uno: gana el par mutuamente mas cercano y lo que
-no alcanza pareja se queda SIN nombre, que es la respuesta honesta.
-
-                                    antes        ahora
-  Establecimientos en varios permisos  303          2  (fichas repetidas del INEGI)
-  Permisos afectados                   611          4
-  Cobertura en pantalla          10,514 (76%)  10,248 (74%)
-  Distancia del cruce            no se guardaba  mediana 31 m, p90 76 m, max 150 m
-
-Tus cuatro casos de Zapopan:
-
-  PL/1462   COMBUSTIBLES PALMA REAL SA DE CV  -> COMBUSTIBLES PALMA REAL (48 m)
-  PL/19030  ECOESTACION DE COMBUSTIBLES       -> su razon social (ya no PALMA REAL)
-  PL/10100  OPERADORA AVIACION SA DE CV       -> CANELO ENERGY (38 m)
-  PL/465    PETROMAX SA DE CV                 -> su razon social (ya no CANELO)
-
-Solo 70 nombres cambian respecto al archivo anterior: es una correccion
-puntual, no un barrido.
-
-
-3. ERROR 21 — el mapa dibujaba un marcador por REGISTRO
--------------------------------------------------------
-Con "todos los periodos" y tras mover el mapa, cada estacion se dibujaba una
-vez por corte. Guadalajara z15: 112 marcadores en 16 posiciones, 7 apilados
--> ahora 16 en 16, cero apilados. Las propias, 14 -> 2. Vista nacional,
-2,499 de 13,846 -> 13,296, porque MAPA_MAX_PUNTOS sube de 2,500 a 16,000
-(~350 ms contra ~1,070 ms, medido, y solo en la vista nacional).
-
-
-4. POR QUE ESTA VEZ EL ZIP SI LLEVA UN DATO
--------------------------------------------
-Las entregas anteriores decian que denue.csv "lo regenera el corte diario".
-ERA FALSO, y lo corrijo: el flujo no lo menciona y xml_a_csv.py no lo
-escribe. Se subio UNA vez, el 16 de octubre de 2026, y nadie lo volvio a
-tocar. Por eso el cruce malo estuvo 24 dias en pantalla.
-
-Como nadie lo regenera, el arreglo no llega a produccion si no va el archivo.
-Por eso denue.csv viaja en este ZIP. Los demas datos siguen fuera, esos si
-los regenera el corte: historico.csv, movimientos.csv, fallback.csv,
-catalogo_estaciones.csv, conducta.csv, reporte_mercado.csv, historico.xlsx y
-clientes/.
-
-Vuelve tambien construir_denue_csv.py, que ayer quitamos por no ser
-ejecutable. Ahora toma argumentos y corre:
-
-    python3 construir_denue_csv.py --denue INEGI_DENUE_09112026.csv \
-            --catalogo catalogo_estaciones.csv --salida denue.csv
-
-Sin el, denue.csv seria un archivo que nadie sabe rehacer. Si prefieres
-mantenerlo fuera del repo publico, borralo y guardalo con el DENUE crudo.
-
-
-5. DEFENSAS QUE QUEDAN EN EL CODIGO
+EL FALLO: una estacion inalcanzable
 -----------------------------------
-index.html: si un establecimiento del DENUE sigue colgado de varios permisos
-con razones sociales distintas, no usa ninguno de sus campos y cae a la razon
-social. Hoy eso aplica a 2 estaciones y se declara en pantalla.
+Cuando dos permisos publican la MISMA coordenada exacta, el tablero dibujaba
+un circulo encima del otro. El de arriba se llevaba todos los clics y el de
+abajo no existia para el usuario a ningun zoom: acercar no los separa porque
+no hay distancia que separar.
 
-auditoria.py: mide el denue.csv ENTREGADO y alerta si vuelven los
-establecimientos compartidos; ademas reporta la distancia del cruce.
-Centinelas: 26.
+Medido sobre el catalogo, agrupando por la cadena de Lat/Lon sin redondear:
+
+  32.50163, -116.939   PL/19531 + PL/19533   SERVICIO EFIGAS (la misma dos veces)
+  19.70447,  -98.97865 PL/23039 + PL/23040   LUNA GAS (la misma dos veces)
+  20.64461, -100.3357  CNE/PL/206 + CNE/PL/491  SUMINISTROS / COMERCIALIZACION
+                                               CIRCUITO UNIVERSIDADES
+  20.0291,   -97.52679 PL/26030 + PL/26127   RED STAR FUEL / TOSEPAN MOLINIAJ
+
+Son 4 coordenadas y 8 estaciones. Aparte hay 73 pares a menos de 25 m que SI
+se separan al acercar: eso es comportamiento normal de un mapa y no se toco.
 
 
-6. COMO INTEGRAR
-----------------
-Descomprime sobre la raiz, reemplazando. No da de baja ningun archivo. Sube.
-Despues del siguiente corte corre `python3 auditoria.py . --markdown`.
+QUE NO SE HIZO, Y POR QUE
+-------------------------
+Lo facil era separarlos unos metros. Se descarto: mover un punto es afirmar
+una ubicacion que la fuente no publica, y la regla 1.1 va primero. Un mapa
+que miente por comodidad visual es peor que uno incomodo.
+
+
+LA CORRECCION
+-------------
+Se agrupa por coordenada exacta y se dibuja UN marcador en la posicion que
+publica la CNE, un poco mas grande (radio 6.5 en vez de 4.5) para que se note
+que hay mas de una, y su globo encabeza con "N estaciones en esta coordenada"
+y las lista todas. La posicion sigue siendo la oficial y ninguna estacion
+queda escondida.
+
+Verificado en el navegador sobre la coordenada de EFIGAS: un marcador, radio
+6.5, los dos permisos dentro del globo.
+
+El contador de #mapSub sigue contando ESTACIONES, no marcadores: a nivel
+nacional dice 13,326 estaciones con 13,322 marcadores, y la diferencia de 4
+es exactamente la de los grupos. Contar marcadores habria reintroducido la
+confusion de etiquetado de los errores 15, 18, 21 y 22.
+
+auditoria.py suma el centinela `porCoord` atado al error 23. Centinelas: 27.
+
+
+COMO INTEGRAR
+-------------
+Descomprime sobre la raiz, reemplazando. Sube. Despues del siguiente corte
+corre `python3 auditoria.py . --markdown`.

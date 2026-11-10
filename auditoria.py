@@ -87,6 +87,9 @@ DEBE_EXISTIR = [
      "el precio EXACTAMENTE en el tope no cumple (pacto dice 'menor a')"),
     ("index.html", "function bandaTamano(", 0,
      "índice de tamaño del DENUE"),
+    ("index.html", "porCoord", 23,
+     "las estaciones que comparten coordenada exacta se agrupan en un marcador: "
+     "sin esto la de abajo queda inalcanzable a cualquier zoom"),
     ("index.html", "d.hermanos", 22,
      "no atribuye un nombre del DENUE compartido por dos estaciones vecinas"),
     ("index.html", "pintarMapaInterno(unicas(rows))", 21,
