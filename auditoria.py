@@ -95,6 +95,13 @@ DEBE_EXISTIR = [
     ("index.html", "pintarMapaInterno(unicas(rows))", 21,
      "el mapa colapsa a una fila por estación: sin esto dibuja un marcador "
      "por registro y apila hasta siete en la misma coordenada"),
+    ("index.html", "var rows = unicas(filas || [])", 24,
+     "renderRail colapsa adentro: el repintado por resize le pasaba scoped() y "
+     "el riel decía 96,466 estaciones con los percentiles sobre renglones"),
+    ("index.html", "var base = unicas(periodRows())", 24,
+     "candidatasDe y computeMercado colapsan adentro: los selectores listaban "
+     "la misma estación una vez por corte y el umbral m.n >= 2 lo pasaban 476 "
+     "municipios de una sola estación"),
     ("xml_a_csv.py", "_conservar_sin_borrar", 13,
      "el histórico y la bitácora nunca se recortan"),
     ("preparar_cliente.py", "limites_app_config", 16,
@@ -111,6 +118,16 @@ DEBE_EXISTIR = [
      "coincidencia de host anclada en el service worker"),
 ]
 
+#  Nota del 16 de noviembre de 2026 (error 24). Se intentó poner
+#  "renderRail(scoped())" y "var base = periodRows();" como patrones
+#  prohibidos y las dos alertas eran FALSAS: tras el arreglo el llamador
+#  puede pasar el conjunto crudo, porque la función llamada lo colapsa
+#  adentro —que es justo la forma correcta según el error 21—, y
+#  "var base = periodRows();" vive además en otra función. Una cadena
+#  prohibida describe una LÍNEA; la propiedad que importa es que ningún
+#  CAMINO entregue registros a un panel que cuenta estaciones. Eso lo
+#  mide el bloque CAMINOS, más abajo. Prohibir la cadena habría dejado
+#  una auditoría que grita lobo, y eso se deja de leer.
 NO_DEBE_EXISTIR = [
     ("index.html", "fuente[k].length", 17,
      "contaba registros y los rotulaba estaciones"),
@@ -247,6 +264,36 @@ def bloque_publicado(raiz, R):
               "La raíz publicada no trae documentos internos")
 
 
+def sin_comentarios(t):
+    """Quita comentarios /* */ y // de un texto, dejando el codigo.
+
+    Hizo falta el 16 de noviembre de 2026: los centinelas de PATRON
+    PROHIBIDO y el bloque CAMINOS dieron dos falsos positivos porque el
+    comentario que DOCUMENTA el arreglo del error 24 cita la cadena
+    prohibida —"renderRail(scoped())"— y porque el comentario empujaba la
+    linea de saneamiento fuera de la ventana que se inspeccionaba. Una
+    auditoria que grita lobo se deja de leer: la comprobacion mide codigo,
+    no prosa. No es un parser de JS; basta para esto y no toca cadenas con
+    http:// porque exige que // abra la linea o venga tras espacio o ';'.
+    """
+    out = []
+    i, n = 0, len(t)
+    while i < n:
+        if t.startswith("/*", i):
+            j = t.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            out.append(" ")
+            continue
+        if t.startswith("//", i) and (i == 0 or t[i - 1] in " \t\n;({,="):
+            j = t.find("\n", i)
+            i = n if j < 0 else j
+            out.append(" ")
+            continue
+        out.append(t[i])
+        i += 1
+    return "".join(out)
+
+
 def bloque_centinela(raiz, R):
     """Error 18: verificar que las correcciones del registro sigan en el código."""
     cache = {}
@@ -271,7 +318,7 @@ def bloque_centinela(raiz, R):
                   % (marca, protege), err)
             perdidas += 1
     for rel, marca, err, porque in NO_DEBE_EXISTIR:
-        t = texto(rel)
+        t = sin_comentarios(texto(rel))
         if t and marca in t:
             R.add(CRITICO, "Centinela",
                   "PATRÓN PROHIBIDO reapareció en %s" % rel,
@@ -887,7 +934,8 @@ SONDA_JS = r"""
 import { chromium } from 'playwright';
 const PUERTO = process.argv[2];
 const out = { errores: [], faltantes: [], csp: [], datos: {} };
-const b = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN });
+const _exe = process.env.CHROMIUM_BIN;
+const b = await chromium.launch(_exe ? { executablePath: _exe } : {});
 const p = await b.newPage({ viewport: { width: 1440, height: 1200 } });
 p.on('pageerror', e => out.errores.push(String(e.message).slice(0, 200)));
 p.on('response', r => {
@@ -904,7 +952,7 @@ const T = async s => { try { return (await p.innerText(s)).replace(/\s+/g, ' ').
                        catch (e) { return null; } };
 try {
   await p.goto('http://127.0.0.1:' + PUERTO + '/index.html',
-               { waitUntil: 'networkidle', timeout: 120000 });
+               { waitUntil: 'load', timeout: 120000 });
   await p.waitForTimeout(9000);
   await p.click('#consentOk').catch(() => {});
 
@@ -984,24 +1032,73 @@ def _num(txt):
     return int(m.group(1).replace(",", "")) if m else None
 
 
+def _bin_chromium():
+    """Ruta al ejecutable de Chromium, o None para que playwright lo resuelva.
+
+    Antes el valor de omisión era "/opt/pw-browsers/chromium", que en esta
+    imagen es una CARPETA: os.path.exists() devolvía verdadero, el bloque
+    se daba por ejecutable y el navegador fallaba al arrancar con un
+    executablePath que no es un binario. Si la variable no apunta a un
+    archivo ejecutable, es mejor no pasarla.
+    """
+    v = os.environ.get("CHROMIUM_BIN")
+    if v and os.path.isfile(v) and os.access(v, os.X_OK):
+        return v
+    for c in ("/opt/pw-browsers/chromium-1243/chrome-linux64/chrome",):
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def _dir_playwright(raiz):
+    """Carpeta node_modules que contiene playwright.
+
+    Antes esto era una lista fija de tres rutas. En una sesión donde
+    playwright viene instalado global —/opt/npm-tools, por ejemplo— la
+    lista no acertaba y el bloque FUNCIONAL, que es el único que
+    recalcula lo que el navegador pintó, se declaraba omitido y el
+    reporte salía en verde. Es la lección del error 20: una
+    comprobación que no se ejecuta reporta igual que una que pasa.
+    Ahora se le pregunta a node dónde resuelve el módulo.
+    """
+    cands = ["/home/claude/merge/node_modules", "/home/claude/patches/node_modules",
+             os.path.join(raiz, "node_modules")]
+    for extra in (os.environ.get("NODE_PATH") or "").split(os.pathsep):
+        if extra:
+            cands.append(extra)
+    try:
+        r = subprocess.run(["node", "-e",
+                            "process.stdout.write(require.resolve('playwright'))"],
+                           capture_output=True, timeout=30)
+        ruta = r.stdout.decode("utf-8", "replace").strip()
+        if ruta:
+            d = ruta
+            while d and d != os.path.dirname(d):
+                d = os.path.dirname(d)
+                if os.path.basename(d) == "node_modules":
+                    cands.insert(0, d)
+                    break
+    except Exception:
+        pass
+    for cand in cands:
+        if os.path.isdir(os.path.join(cand, "playwright")):
+            return cand
+    return None
+
+
 def bloque_funcional(raiz, R):
     import shutil
     import socket
     import tempfile
     import threading
 
-    chromium = os.environ.get("CHROMIUM_BIN") or "/opt/pw-browsers/chromium"
-    if not _hay("node") or not os.path.exists(chromium):
-        R.add(AVISO, "Funcional", "Bloque omitido: falta node o Chromium",
+    chromium = _bin_chromium()
+    if not _hay("node"):
+        R.add(AVISO, "Funcional", "Bloque omitido: falta node",
               "Se verificó el código y los datos, NO que el sitio funcione. "
               "En la sesión del lunes sí corre.")
         return
-    pw = None
-    for cand in ("/home/claude/merge/node_modules", "/home/claude/patches/node_modules",
-                 os.path.join(raiz, "node_modules")):
-        if os.path.isdir(os.path.join(cand, "playwright")):
-            pw = cand
-            break
+    pw = _dir_playwright(raiz)
     if not pw:
         R.add(AVISO, "Funcional", "Bloque omitido: falta playwright",
               "Instálalo con `npm i playwright` para que la auditoría abra el sitio.")
@@ -1024,7 +1121,10 @@ def bloque_funcional(raiz, R):
             h.write(SONDA_JS)
         env = dict(os.environ)
         env["NODE_PATH"] = pw
-        env["CHROMIUM_BIN"] = chromium
+        if chromium:
+            env["CHROMIUM_BIN"] = chromium
+        else:
+            env.pop("CHROMIUM_BIN", None)
         # node resuelve los imports desde el directorio del script
         os.symlink(pw, os.path.join(tmp, "node_modules"))
         r = subprocess.run(["node", js, str(puerto)], capture_output=True,
@@ -1391,6 +1491,105 @@ def imprimir(R, markdown=False):
     return "\n".join(sal)
 
 
+# -----------------------------------------------------------------
+#  CAMINOS — que CADA llamada a un panel que cuenta estaciones reciba
+#  estaciones, no registros.
+#
+#  Error 24 (16 de noviembre de 2026). Los centinelas de arriba prueban
+#  que una linea existe; el error 21 ya habia ensenado que eso no prueba
+#  que cubra todos los caminos. Esta semana el mismo fallo aparecio en
+#  dos paneles mas: renderRail por el repintado de `resize` y
+#  candidatasDe por los dos selectores de estacion. Ninguna cadena fija
+#  lo habria visto.
+#
+#  Este bloque no busca una linea: recorre TODAS las llamadas a los
+#  paneles que cuentan estaciones y exige que el argumento venga
+#  colapsado —o que la funcion llamada colapse en su primera linea—.
+#  Un panel nuevo queda cubierto el dia que se escribe.
+# -----------------------------------------------------------------
+PANELES_POR_ESTACION = [
+    "renderRail", "renderKpis", "renderExtremes", "renderTable",
+    "renderConducta", "renderCumplimientoTope", "renderCompetencia",
+    "renderCompare", "renderHist", "pintarMapa", "candidatasDe",
+    "construirRejilla",
+]
+
+#  renderProfeco y renderDinamica reciben los varios cortes A PROPOSITO:
+#  miden el movimiento ENTRE cortes (error 18). No se listan arriba.
+CRUDAS = ("scoped()", "periodRows()", "state.rows")
+
+
+def _colapsa_adentro(cuerpo):
+    """La funcion sanea su propia entrada en sus primeras lineas de CODIGO.
+
+    Se miran los primeros 400 caracteres del cuerpo ya sin comentarios: un
+    comentario largo que explica el arreglo no debe decidir si el arreglo
+    existe, y tampoco debe esconderlo.
+    """
+    return "unicas(" in sin_comentarios(cuerpo)[:400]
+
+
+def bloque_caminos(raiz, R):
+    ruta = os.path.join(raiz, "index.html")
+    if not os.path.exists(ruta):
+        return
+    html = sin_comentarios(io.open(ruta, encoding="utf-8").read())
+
+    def cuerpo(nombre):
+        i = html.find("function " + nombre)
+        if i < 0:
+            return ""
+        j = html.find("{", i)
+        d = 0
+        k = j
+        while k < len(html):
+            if html[k] == "{":
+                d += 1
+            elif html[k] == "}":
+                d -= 1
+                if d == 0:
+                    break
+            k += 1
+        return html[i:k + 1]
+
+    malos, revisados, protegidos = [], 0, []
+    for fn in PANELES_POR_ESTACION:
+        cpo = cuerpo(fn)
+        if not cpo:
+            R.add(ALERTA, "Caminos", "No existe la función %s" % fn,
+                  "La lista de paneles quedó desfasada del código: averígualo "
+                  "antes de dar el bloque por bueno.", 24)
+            continue
+        seguro = _colapsa_adentro(cpo)
+        if seguro:
+            protegidos.append(fn)
+        for m in re.finditer(r"(?<![A-Za-z0-9_])" + fn + r"\s*\(([^;{}]{0,60})", html):
+            if html[max(0, m.start() - 30):m.start()].rstrip().endswith("function"):
+                continue
+            revisados += 1
+            arg = m.group(1).strip()
+            if seguro:
+                continue
+            for cruda in CRUDAS:
+                if arg.startswith(cruda[:-1]) or arg == cruda or arg.startswith(cruda):
+                    malos.append("%s(%s)" % (fn, arg[:28]))
+                    break
+
+    if malos:
+        R.add(CRITICO, "Caminos",
+              "%d llamada(s) pasan registros a un panel que cuenta estaciones"
+              % len(malos),
+              ", ".join(sorted(set(malos))) +
+              ". El panel contará renglones y los rotulará estaciones: es el "
+              "factor 7 de los errores 15, 18, 21, 22 y 24. El saneamiento va "
+              "DENTRO de la función que consume.", 24)
+    else:
+        R.add(BIEN, "Caminos",
+              "%d llamada(s) a %d panel(es) por estación, ninguna con registros crudos"
+              % (revisados, len(PANELES_POR_ESTACION)),
+              "Colapsan adentro: " + ", ".join(protegidos))
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     markdown = "--markdown" in sys.argv
@@ -1402,7 +1601,7 @@ def main():
     bloques = [bloque_estructura, bloque_centinela, bloque_sintaxis,
                bloque_referencias, bloque_series, bloque_padron, bloque_coherencia,
                bloque_codigo, bloque_clientes, bloque_publicado, bloque_instancias,
-               bloque_subcuentas, bloque_flujo, bloque_git]
+               bloque_subcuentas, bloque_caminos, bloque_flujo, bloque_git]
     if "--sin-navegador" not in sys.argv:
         bloques.insert(2, bloque_funcional)
     for fn in bloques:

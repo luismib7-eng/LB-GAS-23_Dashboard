@@ -1,57 +1,163 @@
-LB GAS 23 — Entrega v2026-11-10e_colisiones
-===========================================
-Origen: commit del corte Precios 2026-11-10. Corrige el error 23.
+LB GAS 23 · Servicio Bautista
+ENTREGA v22 — 16 de noviembre de 2026 — ERROR 24
+================================================================
 
-Cambian index.html y auditoria.py. Los demas van identicos. No da de baja
-ningun archivo y no lleva datos.
+Reemplaza TODOS los archivos de este paquete en la raíz del repositorio.
+No borres nada. Esta entrega no da de baja ningún archivo: no hace falta
+ninguna línea de `git rm`.
 
+QUÉ TRAE
+----------------------------------------------------------------
+Dos archivos cambiaron: index.html y auditoria.py. El resto viaja
+igual que está publicado, para que puedas reemplazar de golpe sin
+quedarte con una mezcla de versiones (error 12).
 
-EL FALLO: una estacion inalcanzable
------------------------------------
-Cuando dos permisos publican la MISMA coordenada exacta, el tablero dibujaba
-un circulo encima del otro. El de arriba se llevaba todos los clics y el de
-abajo no existia para el usuario a ningun zoom: acercar no los separa porque
-no hay distancia que separar.
+  index.html     3 defectos CRÍTICOS de conteo + 6 arreglos de rótulo
+                 + 1 mejora medida en el panel de distribución
+  auditoria.py   el bloque FUNCIONAL vuelve a correr (llevaba semanas
+                 omitiéndose en silencio) + bloque nuevo CAMINOS
+                 + 2 centinelas del error 24
 
-Medido sobre el catalogo, agrupando por la cadena de Lat/Lon sin redondear:
+LO QUE *NO* TRAE, Y POR QUÉ
+----------------------------------------------------------------
+NO van en el paquete, porque el corte diario los regenera completos y
+un ZIP que los lleve congelados los regresa al pasado (error 13):
 
-  32.50163, -116.939   PL/19531 + PL/19533   SERVICIO EFIGAS (la misma dos veces)
-  19.70447,  -98.97865 PL/23039 + PL/23040   LUNA GAS (la misma dos veces)
-  20.64461, -100.3357  CNE/PL/206 + CNE/PL/491  SUMINISTROS / COMERCIALIZACION
-                                               CIRCUITO UNIVERSIDADES
-  20.0291,   -97.52679 PL/26030 + PL/26127   RED STAR FUEL / TOSEPAN MOLINIAJ
+  historico.csv  movimientos.csv  reporte_mercado.csv
+  fallback.csv   catalogo_estaciones.csv  conducta.csv
+  historico.xlsx  clientes/
 
-Son 4 coordenadas y 8 estaciones. Aparte hay 73 pares a menos de 25 m que SI
-se separan al acercar: eso es comportamiento normal de un mapa y no se toco.
+NO va denue.csv, que SÍ viajaría si hubiera cambiado: nadie lo
+regenera —el flujo no lo menciona y xml_a_csv.py no lo escribe—. Esta
+semana no se tocó, así que el publicado del 9 de noviembre sigue
+siendo el bueno. Verificado en esta corrida: asignación uno a uno,
+4 permisos en fichas repetidas del propio INEGI, cruce a 31 m de
+mediana y 150 m el máximo.
 
+ERROR 24 — EL MISMO FACTOR 7, EN TRES PANELES MÁS
+----------------------------------------------------------------
+Con el selector de PERIODO en "Todos los periodos", tres caminos de
+entrada recibían REGISTROS (los 7 cortes) donde debían recibir
+ESTACIONES. Medido en el navegador, antes y después:
 
-QUE NO SE HIZO, Y POR QUE
--------------------------
-Lo facil era separarlos unos metros. Se descarto: mover un punto es afirmar
-una ubicacion que la fuente no publica, y la regla 1.1 va primero. Un mapa
-que miente por comodidad visual es peor que uno incomodo.
+1. Regla de dispersión, al redimensionar la ventana
+     antes: "Brecha $14.05 entre 96,466 estaciones"
+   después: "Brecha $13.39 entre 13,786 estaciones"
+   Los percentiles P25/P50/P75/P90 —que SON la clasificación del
+   tablero— se calculaban sobre renglones. Bastaba girar un teléfono.
 
+2. Selectores de estación (simulador y vecindario)
+     antes: 200 opciones, 104 estaciones distintas; la misma estación
+            siete veces seguidas; el contador decía
+            "14 estación(es) propia(s)" donde hay 2
+   después: 124 opciones, 104 distintas, sin repeticiones;
+            "2 estación(es) propia(s)"
+   Con la lista recortada en 200, el usuario solo alcanzaba una
+   séptima parte de las coincidencias.
 
-LA CORRECCION
--------------
-Se agrupa por coordenada exacta y se dibuja UN marcador en la posicion que
-publica la CNE, un poco mas grande (radio 6.5 en vez de 4.5) para que se note
-que hay mas de una, y su globo encabeza con "N estaciones en esta coordenada"
-y las lista todas. La posicion sigue siendo la oficial y ninguna estacion
-queda escondida.
+3. Promedios de referencia por municipio / estado / nacional
+     antes: el `n` que el Explorador imprime como "N estaciones"
+            valía 96,466 donde hay 13,786 (6,851 en Jalisco donde
+            hay 979), y el umbral `m.n >= 2` —que existe para no
+            comparar una estación contra sí misma— lo pasaban
+            476 municipios de UNA sola estación, que quedaban con
+            diferencial $0.00 "vs. su municipio"
+   después: cuenta estaciones; esos 476 caen a la referencia estatal
+   El promedio en sí se movía menos de un centavo ($23.6901 contra
+   $23.6895 nacional): ningún material comercial salió con un precio
+   malo. Era el conteo y el umbral, no el precio.
 
-Verificado en el navegador sobre la coordenada de EFIGAS: un marcador, radio
-6.5, los dos permisos dentro del globo.
+Los tres se arreglaron DENTRO de la función que consume
+(renderRail, candidatasDe, computeMercado), no en los llamadores,
+que es la lección del error 21: colapsar en cada llamador obliga a
+recordarlo en el siguiente que se escriba.
 
-El contador de #mapSub sigue contando ESTACIONES, no marcadores: a nivel
-nacional dice 13,326 estaciones con 13,322 marcadores, y la diferencia de 4
-es exactamente la de los grupos. Contar marcadores habria reintroducido la
-confusion de etiquetado de los errores 15, 18, 21 y 22.
+De paso, el render con "Todos los periodos" bajó de ~1,500 ms a
+~1,295 ms, porque computeMercado ahora recorre 13,786 filas en vez
+de 96,918.
 
-auditoria.py suma el centinela `porCoord` atado al error 23. Centinelas: 27.
+RÓTULOS CORREGIDOS
+----------------------------------------------------------------
+· #datasetNote dice "Archivo cargado: 13,855 estaciones en total".
+  Es el pendiente P1 que decidiste el 10 de noviembre.
+· El panel de operadores decía "8 de 1418, ordenados por precio" para
+  lo que son los 8 de MAYOR PARQUE. Se leía como "los 8 más baratos"
+  y el más barato del país con dos o más estaciones está en $18.79,
+  no en $23.68. Ahora lo declara, y con un solo operador dice
+  "el único de la selección" en vez de "los 1 de 1".
+· "−0.00" y "-0.00" (cero con signo, y en el KPI con guion ASCII en
+  vez del signo menos) pasan a "±0.00" en los cuatro lugares donde
+  aparecían: tarjeta de operador, su pie, su tooltip, la línea del
+  KPI y la columna de dispersión del Explorador.
+· "Las 7 municipios" → "Los 7 municipios"; la dimensión Región ya no
+  produce "regións".
+· La comparativa decía "La fuente no incluye región, estado ni
+  municipio" en Loreto, BCS —donde sí los incluye, solo que el filtro
+  deja un municipio—. Ahora dice por qué de verdad.
 
+MEJORA: EL PRECIO MÁS REPETIDO, EN PANTALLA
+----------------------------------------------------------------
+El panel de Distribución de precios tiene una barra que concentra el
+68% del padrón, y ningún ancho de cajón la reparte: la mediana y el
+P75 de Regular son el MISMO valor, $23.99. No es un defecto del
+binado, es una masa puntual. La gráfica lo insinuaba; ahora el
+subtítulo lo dice con el número, calculado del corte cargado:
 
-COMO INTEGRAR
--------------
-Descomprime sobre la raiz, reemplazando. Sube. Despues del siguiente corte
-corre `python3 auditoria.py . --markdown`.
+  Regular  el precio más repetido es $23.99: 5,690 estaciones, 41.3%
+  Premium  el precio más repetido es $29.99: 1,457 estaciones, 11.2%
+  Diésel   el precio más repetido es $27.00: 4,630 estaciones, 44.1%
+
+La línea del diésel queda al lado del panel del tope, que dice
+"compromiso de precio al público menor a $27.00". El precio más
+común del diésel en México es exactamente el que no cumple.
+
+AUDITORÍA: EL BLOQUE QUE NO CORRÍA
+----------------------------------------------------------------
+El bloque FUNCIONAL —el único que abre el sitio y recalcula en Python
+lo que el navegador pintó, o sea el único que atrapa el error NUEVO—
+se declaraba "omitido: falta playwright" y el reporte salía en verde.
+Tres defectos, los tres de detección de entorno:
+
+  · buscaba playwright en tres rutas fijas y no le preguntaba a node
+    dónde resuelve el módulo
+  · su Chromium de omisión, /opt/pw-browsers/chromium, es una CARPETA:
+    os.path.exists() devolvía verdadero y el navegador fallaba al
+    arrancar con un executablePath que no es un binario
+  · esperaba 'networkidle', que no llega nunca cuando los tiles de
+    OpenStreetMap están bloqueados
+
+Es la lección del error 20 otra vez: una comprobación que no se
+ejecuta reporta igual que una que pasa.
+
+BLOQUE NUEVO: CAMINOS
+----------------------------------------------------------------
+Los centinelas prueban que una LÍNEA existe. El error 21 ya había
+enseñado que eso no prueba que cubra todos los caminos, y esta semana
+el mismo fallo apareció en tres paneles más. CAMINOS no busca una
+cadena: recorre TODAS las llamadas a los 12 paneles que cuentan
+estaciones y exige que el argumento venga colapsado, o que la función
+llamada colapse en sus primeras líneas de código. Un panel nuevo
+queda cubierto el día que se escribe.
+
+Se intentó además poner "renderRail(scoped())" como patrón prohibido
+y la alerta era FALSA: tras el arreglo el llamador PUEDE pasar el
+conjunto crudo, porque la función lo colapsa adentro. Se retiró y
+quedó documentado en el propio archivo. Una auditoría que grita lobo
+se deja de leer.
+
+CÓMO VERIFICAR, EN TU MÁQUINA
+----------------------------------------------------------------
+  npm i playwright
+  python3 auditoria.py . --markdown
+
+Sale con código 1 si hay críticos. En esta corrida: 0 críticos,
+6 avisos, 28 verdes, con el bloque FUNCIONAL ejecutado.
+
+Salvedades de método de la corrida del 16 de noviembre, que NO son
+defectos del producto:
+  · el proxy de la sesión bloquea github.io y los tiles de
+    OpenStreetMap con 403, así que el sitio se sirvió en localhost
+  · se auditó el corte del 15 de noviembre (19:14 UTC), que es el
+    último publicado: el del 16 todavía no existía a las 14:52 UTC
+  · no se pudo hacer git push (el proxy responde 403); el arreglo
+    llega a producción cuando subas este ZIP
