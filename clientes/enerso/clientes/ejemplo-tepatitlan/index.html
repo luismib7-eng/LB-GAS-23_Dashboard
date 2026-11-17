@@ -2055,7 +2055,7 @@ html[data-theme="dark"] .din__titulo{color:#8FB6E8}
   <section class="panel">
     <div class="panel__head">
       <h2 class="panel__title">Distribución de precios</h2>
-      <p class="panel__sub">Número de estaciones en cada rango de precio del producto seleccionado.</p>
+      <p class="panel__sub" id="histSub">Número de estaciones en cada rango de precio del producto seleccionado.</p>
     </div>
     <div class="chartbox chartbox--short"><canvas id="chartHist"></canvas><p class="empty" id="emptyHist" hidden></p></div>
   </section>
@@ -3706,7 +3706,13 @@ window.APP_CONFIG = {
     state.rows.forEach(function (r) { permisos[permitKey(r.permiso)] = true; });
     var unicas = Object.keys(permisos).length;
 
-    var nota = [unicas.toLocaleString("es-MX") + " estaciones", "origen: " + state.origin];
+    /* P1 (decidido el 10 nov 2026): esta línea describe el ARCHIVO cargado,
+       no la selección activa, y no cambia al elegir un corte. Tres centímetros
+       abajo #tableCount dice las de la selección. Dos cifras correctas que
+       miden cosas distintas invitan a la confusión registros/estaciones que
+       ya costó los errores 15, 18, 21 y 22: ahora el rótulo lo declara. */
+    var nota = ["Archivo cargado: " + unicas.toLocaleString("es-MX") + " estaciones en total",
+                "origen: " + state.origin];
     if (ps.length > 1) {
       nota.push(ps.length + " cortes · " + state.rows.length.toLocaleString("es-MX") + " registros");
     } else if (ps.length) {
@@ -3958,7 +3964,24 @@ window.APP_CONFIG = {
     /* Los promedios y la rejilla dependen solo del periodo y del padrón cargado,
        no de los filtros de vista. Recalcularlos en cada clic cuesta caro con
        13,800 estaciones, así que se memorizan por firma. */
-    var base = periodRows();
+    /* ERROR 24. periodRows() son REGISTROS. construirRejilla ya colapsaba
+       adentro (error 18), pero las bolsas de promedio municipio/estado/nacional
+       se llenaban con los 7 cortes. Dos consecuencias medidas el 16 de
+       noviembre de 2026 con "Todos los periodos":
+
+         · el `n` que viaja en referenciaLocal() y que el Explorador imprime
+           como "N estaciones" valía 96,466 donde hay 13,786, y 6,851 en
+           Jalisco donde hay 979: el factor 7 de los errores 6, 15, 18, 21 y 22.
+         · peor, el umbral `m.n >= 2` —que existe para no comparar una estación
+           contra sí misma— lo pasaban 476 municipios de UNA sola estación,
+           porque una estación vista en 7 cortes son 7 renglones. Esas 476
+           quedaban con diferencial $0.00 "vs. su municipio" y el tablero
+           rotulaba "7 estaciones" donde hay 1.
+
+       El promedio en sí se movía menos de un centavo (nacional $23.6901 contra
+       $23.6895), así que ningún material comercial salió con un precio malo.
+       unicas() es idempotente: la rejilla no cambia de comportamiento. */
+    var base = unicas(periodRows());
     var firma = state.period + "|" + base.length + "|" + (state.updatedAt ? state.updatedAt.getTime() : 0) +
                 "|" + (CFG.RADIO_KM || 0);
     if (firma === mercadoFirma) return;
@@ -4140,7 +4163,12 @@ window.APP_CONFIG = {
       var parts = [vals.length.toLocaleString("es-MX") + " estaciones con precio"];
       if (mean !== null && b) {
         var diff = mean - b;
-        parts.push((diff >= 0 ? "+" : "") + diff.toFixed(2) + " vs. " + ref.etiqueta + " (" + money(b) + ")");
+        /* La línea del delta ya trataba medio centavo como "sin cambio"; esta
+           no, y mostraba "-0.00 vs. Promedio nacional" —con guion ASCII, no el
+           signo menos del resto del tablero— cuando el promedio de la selección
+           coincide con la referencia. Un cero con signo se lee como posición. */
+        parts.push((Math.abs(diff) < 0.005 ? "\u00b1" : diff > 0 ? "+" : "\u2212") +
+                   Math.abs(diff).toFixed(2) + " vs. " + ref.etiqueta + " (" + money(b) + ")");
       }
       var tope = topeEstrategia(p);
       if (tope) {
@@ -4383,7 +4411,17 @@ window.APP_CONFIG = {
      7. Regla de dispersión
      --------------------------------------------------------- */
 
-  function renderRail(rows) {
+  function renderRail(filas) {
+    /* ERROR 24: el colapso va DENTRO, no en los llamadores. render() manda
+       `est` ya colapsado, pero el repintado por `resize` llamaba
+       renderRail(scoped()) con los 7 cortes sin colapsar: con "Todos los
+       periodos" el riel pasaba de "13,786 estaciones" a "96,466 estaciones"
+       y la brecha de $13.39 a $14.05, con los percentiles P25/P50/P75/P90
+       —que son la clasificación del tablero— calculados sobre renglones.
+       Es la lección del error 21: un panel con dos caminos de entrada se
+       sanea dentro de la función que consume. unicas() es idempotente, así
+       que el camino de render() no cambia de comportamiento. */
+    var rows = unicas(filas || []);
     var p = state.product;
     var track = $("railTrack");
     var withPrice = rows.filter(function (r) { return r[p] !== null; });
@@ -4595,8 +4633,16 @@ window.APP_CONFIG = {
     destroy("compare");
 
     $("compareTitle").textContent = "Comparativa por " + dim.label.toLowerCase();
+    /* El mensaje de "estación" afirmaba que la FUENTE no trae región, estado
+       ni municipio. Es cierto cuando el padrón llega sin cruzar con el
+       catálogo, y falso —visto el 16 de noviembre de 2026 en Loreto, BCS—
+       cuando el filtro deja un solo municipio y por eso la dimensión cae a
+       estación. Regla 1.1: no se afirma de los datos algo que no es. */
+    var hayGeo = rows.some(function (r) { return r.estado || r.municipio; });
     $("compareSub").textContent = dim.key === "estacion"
-      ? "La fuente no incluye región, estado ni municipio: se comparan estaciones individuales."
+      ? (hayGeo
+          ? "La selección tiene un solo municipio, así que se comparan las estaciones una por una."
+          : "La fuente no incluye región, estado ni municipio: se comparan estaciones individuales.")
       : "Promedio de " + PRODUCTS[p].label + " en cada " + dim.label.toLowerCase() + ".";
 
     var groups = {};
@@ -4620,8 +4666,14 @@ window.APP_CONFIG = {
     if (list.length > 14) {
       list = list.slice(0, 7).concat(list.slice(-7));
       trimmed = true;
-      $("compareSub").textContent = "Las 7 " + (dim.key === "estacion" ? "estaciones" : dim.label.toLowerCase() + "s") +
-        " con el precio más alto y las 7 con el más bajo de " + PRODUCTS[p].label +
+      /* "Las 7 " + dim.label + "s" producía "Las 7 municipios", "Las 7 estados"
+         y "Las 7 regións". El artículo y el plural se toman de la dimensión. */
+      var fem = dim.key === "estacion" || dim.key === "region";
+      var plural = dim.key === "estacion" ? "estaciones"
+                 : dim.key === "region" ? "regiones"
+                 : dim.label.toLowerCase() + "s";
+      $("compareSub").textContent = (fem ? "Las 7 " : "Los 7 ") + plural +
+        " con el precio más alto y " + (fem ? "las 7" : "los 7") + " con el más bajo de " + PRODUCTS[p].label +
         (dim.key === "estacion" ? ". La fuente no incluye región, estado ni municipio." : ".");
     }
 
@@ -4659,13 +4711,38 @@ window.APP_CONFIG = {
     var p = state.product;
     var el = $("emptyHist");
     destroy("hist");
+    var sub = $("histSub");
     var vals = pricesOf(rows, p).sort(function (a, b) { return a - b; });
     if (vals.length < 3) {
       el.hidden = false;
       el.textContent = "Se necesitan al menos tres estaciones con precio de " + PRODUCTS[p].label + ".";
+      if (sub) sub.textContent = "Número de estaciones en cada rango de precio del producto seleccionado.";
       return;
     }
     el.hidden = true;
+
+    /* El cajón modal del histograma nacional concentra el 68% de la selección,
+       y ningún ancho de cajón lo reparte: la mediana y el P75 de Regular son el
+       MISMO valor, $23.99. No es un defecto del binado, es una masa puntual —el
+       mercado se ancla un centavo por debajo del tope del pacto—. La gráfica lo
+       insinúa con una barra; aquí se dice con el número, que es lo que un dueño
+       necesita para decidir si se para sobre el ancla o al lado. Se cuenta en
+       centavos enteros para no agrupar precios distintos por redondeo. */
+    if (sub) {
+      var cuenta = {}, mejor = null, mejorN = 0;
+      for (var q = 0; q < vals.length; q++) {
+        var cv = Math.round(vals[q] * 100);
+        cuenta[cv] = (cuenta[cv] || 0) + 1;
+        if (cuenta[cv] > mejorN) { mejorN = cuenta[cv]; mejor = cv; }
+      }
+      sub.textContent = vals.length.toLocaleString("es-MX") + " estaciones con precio de " +
+        PRODUCTS[p].label + " en la selección" +
+        (vals.length >= 20
+          ? " · el precio más repetido es " + money(mejor / 100) + ": " +
+            mejorN.toLocaleString("es-MX") + " estaciones, " +
+            (mejorN * 100 / vals.length).toFixed(1) + "% de la selección"
+          : "");
+    }
 
     var min = vals[0], max = vals[vals.length - 1];
     var span = (max - min) || 1;
@@ -5188,20 +5265,31 @@ window.APP_CONFIG = {
       return '<div class="comp__card' + clase + '" data-tip data-tip-title="' + esc(d.marca) +
         '" data-tip-body="' + d.n + (d.n > 1 ? " estaciones" : " estación") + " en la selección · promedio " +
         money(d.avg) + " sobre " + d.registros.toLocaleString("es-MX") +
-        (d.registros === 1 ? " registro" : " registros") + (dif === null ? "" : " · " + (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) +
+        (d.registros === 1 ? " registro" : " registros") + (dif === null ? "" : " · " + (Math.abs(dif) < 0.005 ? "±" : dif > 0 ? "+" : "−") + Math.abs(dif).toFixed(2) +
         " contra el promedio de la zona") + '">' +
         '<p class="comp__marca">' + esc(nombre) + "</p>" +
         '<p class="comp__precio">' + money(d.avg) + "</p>" +
         '<p class="comp__pie">' + d.n.toLocaleString("es-MX") + (d.n > 1 ? " estaciones" : " estación") +
-          (dif === null ? "" : " · " + (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) + " vs. zona") +
+          (dif === null ? "" : " · " + (Math.abs(dif) < 0.005 ? "±" : dif > 0 ? "+" : "−") + Math.abs(dif).toFixed(2) + " vs. zona") +
         "</p></div>";
     }).join("");
 
     if (nota) {
       var universo = Object.keys(fuente).filter(function (k) { return fuente[k].sitiosN >= minimo; }).length;
       nota.textContent = (porRazon
-          ? "Grupos operadores con dos o más estaciones · " + lista.length + " de " + universo +
-            " en la selección, ordenados por precio"
+          /* El panel NO muestra los más baratos: toma los de mayor parque
+             (sort por d.n) y recién entonces los ordena por precio. Decir
+             solo "ordenados por precio" se leía como "los 8 más baratos de
+             1,418", y el más barato del país con dos o más estaciones está
+             en $18.79, no en $23.68. Regla 1.6: el rótulo tiene que
+             describir lo que el código hace. */
+          ? "Grupos operadores con dos o más estaciones · " +
+            (lista.length === 1
+              ? "el único de la selección"
+              : universo > lista.length
+                ? "los " + lista.length + " de mayor parque, de " +
+                  universo.toLocaleString("es-MX") + " en la selección, ordenados entre sí por precio"
+                : "los " + lista.length + " de la selección, ordenados por precio")
           : "Promedio por marca") +
         " · " + PRODUCTS[p].label + " · " +
         (refZona ? "contra el promedio de la zona filtrada" : "contra el promedio nacional del periodo") +
@@ -5591,7 +5679,7 @@ window.APP_CONFIG = {
           "<td>" + esc(d.r.estado || "—") + "</td>" +
           '<td class="is-num">' + money(d.r[prod]) + "</td>" +
           '<td class="is-num"><span class="spread ' + clase + '">' +
-            (dif >= 0 ? "+" : "−") + Math.abs(dif).toFixed(2) + "</span></td></tr>";
+            (Math.abs(dif) < 0.005 ? "±" : dif > 0 ? "+" : "−") + Math.abs(dif).toFixed(2) + "</span></td></tr>";
       }).join("") : '<tr><td colspan="5" class="na">Sin datos regionales en la selección.</td></tr>';
     };
 
@@ -5696,7 +5784,7 @@ window.APP_CONFIG = {
       linea("Diésel", r.diesel === null ? "N/D" : money(r.diesel)) +
       (sp ? '<p class="pop__spread ' +
               (sp.valor < -0.005 ? "spread--bajo" : sp.valor > 0.005 ? "spread--alto" : "spread--par") + '">' +
-              (sp.valor >= 0 ? "+" : "−") + Math.abs(sp.valor).toFixed(2) + " vs. " + esc(sp.ref.etiqueta) +
+              (Math.abs(sp.valor) < 0.005 ? "±" : sp.valor > 0 ? "+" : "−") + Math.abs(sp.valor).toFixed(2) + " vs. " + esc(sp.ref.etiqueta) +
               " · " + sp.ref.n.toLocaleString("es-MX") + " estaciones</p>"
             : "") +
     "</div>";
@@ -6601,7 +6689,14 @@ window.APP_CONFIG = {
   function candidatasSimulador() { return candidatasDe(sim.busqueda); }
 
   function candidatasDe(busqueda) {
-    var base = periodRows();
+    /* ERROR 24: periodRows() devuelve REGISTROS. Con "Todos los periodos"
+       los dos selectores que se alimentan de aquí —el del simulador y el del
+       vecindario— listaban la misma estación siete veces, una por corte, y
+       como la lista se recorta en SIM_MAX=200 el usuario solo alcanzaba una
+       séptima parte de las coincidencias. El contador decía además
+       "14 estación(es) propia(s)" donde hay 2: el factor 7 de los errores
+       15, 18, 21 y 22. El colapso va dentro, igual que en pintarMapa. */
+    var base = unicas(periodRows());
     var q = slug(busqueda || "");
     var propias = base.filter(function (r) { return r._own; });
 
