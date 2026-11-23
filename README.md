@@ -656,8 +656,16 @@ de permiso cubre las cinco variantes observadas: `EXP/ES`, `EXP/ESA` (autoconsum
 - **Regla de dispersión.** Una marca por estación entre el mínimo y el máximo, con la mediana, la
   banda P25–P75 y la referencia nacional. Muestra de un vistazo qué tan concentrado está el mercado.
 - **Tendencia por periodo.** Promedio de los tres productos en cada fecha cargada.
-- **Comparativa.** Promedio por región, estado, municipio o marca, según las columnas disponibles.
-  Con más de catorce grupos muestra los siete más altos y los siete más bajos.
+- **Comparativa.** Promedio por región, estado o municipio, según las columnas disponibles.
+  Con más de catorce grupos muestra los siete más altos y los siete más bajos, y en esa rama
+  —solo en esa— aplica un **piso de cinco estaciones** por grupo, siempre que al menos catorce
+  grupos lo pasen; si no lo pasan, se muestran todos y el subtítulo dice que el piso no se aplicó.
+  Cada barra lleva su número de estaciones en la etiqueta. Un municipio se identifica por
+  **(estado, municipio)**, no por su nombre: 103 nombres de municipio del padrón existen en dos o
+  más entidades, y cuando el nombre se repite en la selección la etiqueta lleva el estado
+  (`Juárez, Chihuahua`). Las estaciones cuya entidad llega vacía en la fuente quedan fuera de la
+  comparación y el subtítulo las cuenta.
+  No hay comparativa por marca: la columna `Marca` del padrón de la CNE está vacía al 100%.
 - **Distribución de precios.** Cuántas estaciones caen en cada rango.
 - **Explorador.** Búsqueda por estación, permiso CRE, municipio o dirección; orden por cualquier
   columna; paginación; etiquetas de mínimo, máximo y tipo de diésel.

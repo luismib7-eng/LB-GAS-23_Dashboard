@@ -1,163 +1,141 @@
 LB GAS 23 · Servicio Bautista
-ENTREGA v22 — 16 de noviembre de 2026 — ERROR 24
+KIT DEL 23 DE NOVIEMBRE DE 2026 — "error 25: identidad de plaza"
+Auditoría semanal del lunes. Veredicto al cerrar: 0 críticos, 37 comprobaciones.
+
+NO LO CONFUNDAS CON EL ANTERIOR
+El kit previo fue el del 16 de noviembre (error 24, caminos de entrada). Este
+es posterior y lo incluye. Si tienes los dos, sube SOLO este.
+
+================================================================
+1. QUÉ SE CORRIGIÓ
 ================================================================
 
-Reemplaza TODOS los archivos de este paquete en la raíz del repositorio.
-No borres nada. Esta entrega no da de baja ningún archivo: no hace falta
-ninguna línea de `git rm`.
+ERROR 25 — Un grupo geográfico se identificaba por su NOMBRE, no por
+            (estado, municipio).  [CRÍTICO · hallado y corregido hoy]
 
-QUÉ TRAE
-----------------------------------------------------------------
-Dos archivos cambiaron: index.html y auditoria.py. El resto viaja
-igual que está publicado, para que puedas reemplazar de golpe sin
-quedarte con una mezcla de versiones (error 12).
+  Medido en el corte del 22 de noviembre de 2026: 103 nombres de municipio
+  existen en dos o más entidades y arrastran 3,323 estaciones, el 24% del
+  padrón con precio de Regular.
 
-  index.html     3 defectos CRÍTICOS de conteo + 6 arreglos de rótulo
-                 + 1 mejora medida en el panel de distribución
-  auditoria.py   el bloque FUNCIONAL vuelve a correr (llevaba semanas
-                 omitiéndose en silencio) + bloque nuevo CAMINOS
-                 + 2 centinelas del error 24
+  Tres sitios, misma causa:
 
-LO QUE *NO* TRAE, Y POR QUÉ
-----------------------------------------------------------------
-NO van en el paquete, porque el corte diario los regenera completos y
-un ZIP que los lleve congelados los regresa al pasado (error 13):
+  a) Comparativa por municipio. La barra rotulada "Juárez" promediaba
+     Ciudad Juárez, Chihuahua ($19.21, 185 estaciones de la Zona Libre) con
+     Juárez, Nuevo León ($23.97, 43 estaciones del área de Monterrey), más
+     Chiapas y Michoacán. Pintaba $20.16: no es ninguno de los cuatro
+     municipios. Estaba entre los 7 más baratos, en el primer dibujo, sin
+     tocar nada.
+       ANTES    Juárez ................ $20.16
+       DESPUÉS  Juárez, Chihuahua ..... $19.21  (n=185)
 
-  historico.csv  movimientos.csv  reporte_mercado.csv
-  fallback.csv   catalogo_estaciones.csv  conducta.csv
-  historico.xlsx  clientes/
+  b) Chips de "Plazas de mayor parque". El chip de Juárez prometía 232
+     estaciones y el clic entregaba 185: 25% más parque del que el clic
+     entrega, y el destino era el estado del primer registro visto.
+       ANTES    chip "Juárez 232" -> clic -> 185 estaciones listadas
+       DESPUÉS  chip "Juárez 185" -> clic -> 185 estaciones listadas
 
-NO va denue.csv, que SÍ viajaría si hubiera cambiado: nadie lo
-regenera —el flujo no lo menciona y xml_a_csv.py no lo escribe—. Esta
-semana no se tocó, así que el publicado del 9 de noviembre sigue
-siendo el bueno. Verificado en esta corrida: asignación uno a uno,
-4 permisos en fichas repetidas del propio INEGI, cruce a 31 m de
-mediana y 150 m el máximo.
+  c) aplicarPlaza() alternaba el filtro comparando solo el nombre: con
+     Juárez/Chihuahua activo, un clic en un chip de Juárez/Nuevo León
+     apagaba el filtro en lugar de cambiar de plaza. Hallado en la lectura
+     profunda; no estaba en pantalla porque dos homónimos rara vez entran
+     los dos al tope de ocho. Se cierra con los otros dos.
 
-ERROR 24 — EL MISMO FACTOR 7, EN TRES PANELES MÁS
-----------------------------------------------------------------
-Con el selector de PERIODO en "Todos los periodos", tres caminos de
-entrada recibían REGISTROS (los 7 cortes) donde debían recibir
-ESTACIONES. Medido en el navegador, antes y después:
+  La llave ahora es (estado, municipio) y la etiqueta lleva el estado
+  cuando el nombre se repite en la selección.
 
-1. Regla de dispersión, al redimensionar la ventana
-     antes: "Brecha $14.05 entre 96,466 estaciones"
-   después: "Brecha $13.39 entre 13,786 estaciones"
-   Los percentiles P25/P50/P75/P90 —que SON la clasificación del
-   tablero— se calculaban sobre renglones. Bastaba girar un teléfono.
+H2 — La rama que recorta de renderCompare reintroducía una afirmación falsa.
+     [ALERTA · regresión de una corrección del 16 de noviembre]
 
-2. Selectores de estación (simulador y vecindario)
-     antes: 200 opciones, 104 estaciones distintas; la misma estación
-            siete veces seguidas; el contador decía
-            "14 estación(es) propia(s)" donde hay 2
-   después: 124 opciones, 104 distintas, sin repeticiones;
-            "2 estación(es) propia(s)"
-   Con la lista recortada en 200, el usuario solo alcanzaba una
-   séptima parte de las coincidencias.
+  Con Juárez, Chihuahua seleccionado —185 estaciones, así que la rama que
+  recorta a 7 y 7 siempre entra— el subtítulo decía "La fuente no incluye
+  región, estado ni municipio" mientras el tablero usaba esa ubicación para
+  filtrar. La guarda de hayGeo se había puesto en la otra rama de la misma
+  función el 16 de noviembre y nunca en ésta. Es el patrón de los errores
+  21 y 24: la corrección fue a un camino y no al otro.
 
-3. Promedios de referencia por municipio / estado / nacional
-     antes: el `n` que el Explorador imprime como "N estaciones"
-            valía 96,466 donde hay 13,786 (6,851 en Jalisco donde
-            hay 979), y el umbral `m.n >= 2` —que existe para no
-            comparar una estación contra sí misma— lo pasaban
-            476 municipios de UNA sola estación, que quedaban con
-            diferencial $0.00 "vs. su municipio"
-   después: cuenta estaciones; esos 476 caen a la referencia estatal
-   El promedio en sí se movía menos de un centavo ($23.6901 contra
-   $23.6895 nacional): ningún material comercial salió con un precio
-   malo. Era el conteo y el umbral, no el precio.
+P4 — Piso de estaciones en los extremos de la comparativa.  [decidido el 17 nov]
 
-Los tres se arreglaron DENTRO de la función que consume
-(renderRail, candidatasDe, computeMercado), no en los llamadores,
-que es la lección del error 21: colapsar en cada llamador obliga a
-recordarlo en el siguiente que se escriba.
+  Piso de 5 estaciones, ADAPTATIVO y declarado, solo dentro de la rama que
+  recorta. Si menos de 14 grupos lo pasan no se aplica y el subtítulo lo
+  dice. Cada barra lleva su número de estaciones en la etiqueta del eje.
+       NACIONAL  piso aplicado, 517 municipios de 1,403 lo pasan.
+                 Baratos: Juárez Chih, Agua Prieta, Piedras Negras, Valle
+                 Hermoso, Reynosa, Matamoros Tamps, Nogales Son — toda la
+                 franja fronteriza norte.
+                 Caros: Cozumel, Guadalupe y Calvo, Lázaro Cárdenas QRoo,
+                 Solidaridad, Benito Juárez QRoo, Tulum, Parras — turismo y
+                 sierra aislada.
+                 ANTES, 3 de los 14 extremos tenían UNA estación.
+       TLAXCALA  piso NO aplicado (solo 8 de 40 municipios lo pasan) y el
+                 subtítulo lo declara; las barras muestran su n.
 
-De paso, el render con "Todos los periodos" bajó de ~1,500 ms a
-~1,295 ms, porque computeMercado ahora recorre 13,786 filas en vez
-de 96,918.
+P5 — El panorama excluía 20 estaciones sin decirlo.  [abierto el 16 nov]
 
-RÓTULOS CORREGIDOS
-----------------------------------------------------------------
-· #datasetNote dice "Archivo cargado: 13,855 estaciones en total".
-  Es el pendiente P1 que decidiste el 10 de noviembre.
-· El panel de operadores decía "8 de 1418, ordenados por precio" para
-  lo que son los 8 de MAYOR PARQUE. Se leía como "los 8 más baratos"
-  y el más barato del país con dos o más estaciones está en $18.79,
-  no en $23.68. Ahora lo declara, y con un solo operador dice
-  "el único de la selección" en vez de "los 1 de 1".
-· "−0.00" y "-0.00" (cero con signo, y en el KPI con guion ASCII en
-  vez del signo menos) pasan a "±0.00" en los cuatro lugares donde
-  aparecían: tarjeta de operador, su pie, su tooltip, la línea del
-  KPI y la columna de dispersión del Explorador.
-· "Las 7 municipios" → "Los 7 municipios"; la dimensión Región ya no
-  produce "regións".
-· La comparativa decía "La fuente no incluye región, estado ni
-  municipio" en Loreto, BCS —donde sí los incluye, solo que el filtro
-  deja un municipio—. Ahora dice por qué de verdad.
+  #panoramaSub decía "13,824 estaciones" y #tableCount "13,844" en el mismo
+  corte. La diferencia son las estaciones cuya entidad llega vacía en la
+  fuente, que el panorama no puede agrupar. Las dos cifras eran correctas;
+  faltaba la declaración. Ahora el subtítulo las cuenta. Mismo tratamiento
+  en la comparativa: 746 estaciones sin municipio quedan fuera y se dicen.
 
-MEJORA: EL PRECIO MÁS REPETIDO, EN PANTALLA
-----------------------------------------------------------------
-El panel de Distribución de precios tiene una barra que concentra el
-68% del padrón, y ningún ancho de cajón la reparte: la mediana y el
-P75 de Regular son el MISMO valor, $23.99. No es un defecto del
-binado, es una masa puntual. La gráfica lo insinuaba; ahora el
-subtítulo lo dice con el número, calculado del corte cargado:
+H3 — El pie del tope decía "el incumplimiento es 100.0% y no 100.0%".
+  Con una sola estación en la selección la frase no decía nada y parecía un
+  error de cálculo. El contraste solo se escribe cuando hay estaciones justo
+  en el tope y las dos lecturas difieren una vez redondeadas.
 
-  Regular  el precio más repetido es $23.99: 5,690 estaciones, 41.3%
-  Premium  el precio más repetido es $29.99: 1,457 estaciones, 11.2%
-  Diésel   el precio más repetido es $27.00: 4,630 estaciones, 44.1%
+H4 — Plural en caso singular. "1 estaciones listadas", "1 estaciones en
+  pantalla", "1 estaciones en la selección". Corregido en #tableCount,
+  #mapSub, #topeNote, #condNote y los chips de plaza.
 
-La línea del diésel queda al lado del panel del tope, que dice
-"compromiso de precio al público menor a $27.00". El precio más
-común del diésel en México es exactamente el que no cumple.
+================================================================
+2. QUÉ SE AGREGÓ A auditoria.py
+================================================================
+  · Bloque FUNCIONAL, atado al error 25, midiendo lo que el navegador pintó:
+      - el conteo de CADA chip de plaza se recalcula contra fallback.csv por
+        (estado, municipio) y debe ser el que su clic entrega;
+      - ninguna etiqueta de la comparativa puede ser un nombre de municipio
+        que exista en varias entidades;
+      - si el subtítulo declara un piso, ninguna barra puede estar debajo.
+        El piso se LEE DEL SUBTÍTULO, no de PISO_COMPARA: se mide la promesa
+        que el usuario lee, no la constante.
+  · 5 centinelas del error 25, para el caso de que el bloque del navegador
+    no corra (lección del error 20: lo que no se ejecuta reporta en verde).
+  · Probado en los dos sentidos: contra el index SIN corregir la auditoría
+    marca 2 chips mal, 1 barra ambigua, 5 centinelas perdidos y la alerta
+    del piso. Contra el corregido, 0 críticos.
 
-AUDITORÍA: EL BLOQUE QUE NO CORRÍA
-----------------------------------------------------------------
-El bloque FUNCIONAL —el único que abre el sitio y recalcula en Python
-lo que el navegador pintó, o sea el único que atrapa el error NUEVO—
-se declaraba "omitido: falta playwright" y el reporte salía en verde.
-Tres defectos, los tres de detección de entorno:
+================================================================
+3. QUÉ NO TRAE ESTE ZIP, Y POR QUÉ
+================================================================
+  NO trae:  historico.csv, movimientos.csv  -> irrecuperables (regla 1.2)
+            fallback.csv, catalogo_estaciones.csv, conducta.csv,
+            reporte_mercado.csv, historico.xlsx, clientes/  -> los regenera
+            el corte diario de las 13:00 UTC
+            denue.csv  -> NO cambió esta semana. Cuando cambie, sí viaja:
+            nadie lo regenera.
 
-  · buscaba playwright en tres rutas fijas y no le preguntaba a node
-    dónde resuelve el módulo
-  · su Chromium de omisión, /opt/pw-browsers/chromium, es una CARPETA:
-    os.path.exists() devolvía verdadero y el navegador fallaba al
-    arrancar con un executablePath que no es un binario
-  · esperaba 'networkidle', que no llega nunca cuando los tiles de
-    OpenStreetMap están bloqueados
+  NO hay archivos que dar de baja: no se necesita ningún `git rm`.
 
-Es la lección del error 20 otra vez: una comprobación que no se
-ejecuta reporta igual que una que pasa.
+  Archivos tocados: index.html, auditoria.py, README.md.
+  Los demás van completos para que el reemplazo de golpe quede consistente.
 
-BLOQUE NUEVO: CAMINOS
-----------------------------------------------------------------
-Los centinelas prueban que una LÍNEA existe. El error 21 ya había
-enseñado que eso no prueba que cubra todos los caminos, y esta semana
-el mismo fallo apareció en tres paneles más. CAMINOS no busca una
-cadena: recorre TODAS las llamadas a los 12 paneles que cuentan
-estaciones y exige que el argumento venga colapsado, o que la función
-llamada colapse en sus primeras líneas de código. Un panel nuevo
-queda cubierto el día que se escribe.
+================================================================
+4. CÓMO SUBIRLO
+================================================================
+  1. Descomprime y sube TODO a la raíz del repositorio.
+  2. Verifica que .nojekyll y .github/ hayan subido: los archivos que
+     empiezan con punto NO se suben al arrastrarlos al navegador (error 2).
+  3. Actions -> "Run workflow", NUNCA "Re-run jobs": re-run reejecuta el
+     commit viejo y el arreglo no se ejecuta (error 3).
+  4. El corte regenera las 4 instancias de cliente y las 3 subcuentas, así
+     que la corrección propaga sola. Verificado en el workflow.
 
-Se intentó además poner "renderRail(scoped())" como patrón prohibido
-y la alerta era FALSA: tras el arreglo el llamador PUEDE pasar el
-conjunto crudo, porque la función lo colapsa adentro. Se retiró y
-quedó documentado en el propio archivo. Una auditoría que grita lobo
-se deja de leer.
-
-CÓMO VERIFICAR, EN TU MÁQUINA
-----------------------------------------------------------------
-  npm i playwright
-  python3 auditoria.py . --markdown
-
-Sale con código 1 si hay críticos. En esta corrida: 0 críticos,
-6 avisos, 28 verdes, con el bloque FUNCIONAL ejecutado.
-
-Salvedades de método de la corrida del 16 de noviembre, que NO son
-defectos del producto:
-  · el proxy de la sesión bloquea github.io y los tiles de
-    OpenStreetMap con 403, así que el sitio se sirvió en localhost
-  · se auditó el corte del 15 de noviembre (19:14 UTC), que es el
-    último publicado: el del 16 todavía no existía a las 14:52 UTC
-  · no se pudo hacer git push (el proxy responde 403); el arreglo
-    llega a producción cuando subas este ZIP
+================================================================
+5. PENDIENTE QUE SE POSTERGÓ, Y POR QUÉ
+================================================================
+  M1 · Panel de exposición al tope SENER — NO se construyó esta semana.
+  La regla del ciclo es que un crítico no impide corregir pero sí impide
+  agregar funcionalidad nueva: no se construye encima de algo roto. El
+  error 25 era un crítico, así que M1 pasa al lunes 30 de noviembre con su
+  especificación intacta. El pacto corre hasta febrero de 2027 y no hay
+  renovación posterior anunciada —verificado hoy—, así que quedan unas 13
+  corridas: hay tiempo, pero no sobra.

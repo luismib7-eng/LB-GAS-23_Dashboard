@@ -59,6 +59,21 @@ DEBE_EXISTIR = [
     # (archivo, marca, error, qué protege)
     ("index.html", "function unicas(", 18,
      "colapsar registros a una fila por estación"),
+    # Error 25 (23 de noviembre de 2026). Las dos funciones que agrupaban por
+    # el NOMBRE del municipio. El bloque FUNCIONAL mide la propiedad sobre lo
+    # que el navegador pintó; estas marcas solo cubren el caso de que ese
+    # bloque no corra, que es la lección del error 20: una comprobación que no
+    # se ejecuta reporta igual que una que pasa.
+    ("index.html", "var geoDim =", 25,
+     "la comparativa agrupa por (estado, municipio), no por el nombre"),
+    ("index.html", "vecesNombre", 25,
+     "la etiqueta de la comparativa lleva el estado cuando el nombre se repite"),
+    ("index.html", "x.etq = (veces[x.m] > 1", 25,
+     "el chip de plaza desambigua los municipios homónimos"),
+    ("index.html", "if (dim.key === \"estacion\" && !hayGeo) {", 25,
+     "la rama que recorta ya no afirma que la fuente no trae ubicación"),
+    ("index.html", "var PISO_COMPARA =", 25,
+     "el piso declarado de los extremos de la comparativa (P4)"),
     ("index.html", "var est = unicas(rows)", 18,
      "render() separa registros de estaciones"),
     ("index.html", "unicas(rows).filter", 18,
@@ -967,6 +982,33 @@ try {
       e => e.map(x => x.innerText.replace(/\s+/g, ' ').trim())).catch(() => []);
   out.datos.operador = await T('#compNote');
 
+  // ERROR 25. El conteo que promete cada chip de plaza debe ser el que el clic
+  // entrega. Se mide el numero impreso y su destino (municipio + estado), y
+  // Python lo recalcula contra fallback.csv. No se lee ninguna constante.
+  out.datos.plazas = await p.$$eval('#plazasBar button', bs => bs.map(x => ({
+    muni: x.getAttribute('data-plaza') || '',
+    estado: x.getAttribute('data-plaza-estado') || '',
+    etq: (x.textContent || '').replace(/\s+/g, ' ').trim(),
+    n: Number(((x.querySelector('.plaza__n') || {}).textContent || '')
+              .replace(/[^0-9]/g, '') || '0')
+  }))).catch(() => []);
+
+  // ERROR 25 y P4 en la comparativa: las etiquetas que el grafico pinto y el
+  // n que el eje declara. El piso se lee del SUBTITULO —lo que la pantalla
+  // afirma— no de PISO_COMPARA.
+  out.datos.compare = await p.evaluate(() => {
+    const cv = document.getElementById('chartCompare');
+    const ch = cv && window.Chart && window.Chart.getChart
+      ? window.Chart.getChart(cv) : null;
+    if (!ch) return null;
+    return {
+      etiquetas: (ch.data.labels || []).map(String),
+      ejes: ((ch.scales.y || {}).ticks || []).map(t => String(t.label)),
+      sub: ((document.getElementById('compareSub') || {}).textContent || '')
+             .replace(/\s+/g, ' ').trim()
+    };
+  }).catch(() => null);
+
   // El radio, que es donde vivió el fallo
   await p.evaluate(() => document.querySelectorAll('details').forEach(d => { d.open = true; }));
   await p.waitForTimeout(500);
@@ -1253,6 +1295,107 @@ def bloque_funcional(raiz, R):
               "nada. Alguien le pasó el conjunto colapsado." % din, 15)
     elif nd is not None:
         R.add(BIEN, "Funcional", "La dinámica sigue viendo varios cortes", din)
+
+    # ------------------------------------------------------------------
+    #  ERROR 25 · un grupo geografico se identifica por (estado, municipio),
+    #  no por el nombre.
+    #
+    #  Hallado el 23 de noviembre de 2026. renderCompare y plazasTop
+    #  agrupaban por el NOMBRE del municipio. En el corte del 22 de
+    #  noviembre, 104 nombres existen en dos o mas entidades y arrastran
+    #  3,323 estaciones: la barra de "Juarez" promediaba Ciudad Juarez,
+    #  Chihuahua ($19.21) con Juarez, Nuevo Leon ($23.97) y pintaba $20.16,
+    #  que no es ninguna de las dos plazas. El chip de plaza prometia 232
+    #  estaciones y el clic entregaba 185.
+    #
+    #  Igual que el bloque SUBCUENTAS, esto NO lee una constante: mide el
+    #  numero que la pantalla imprime y lo recalcula contra fallback.csv.
+    #  Un centinela de cadena no habria servido — la leccion del error 24.
+    # ------------------------------------------------------------------
+    porPlaza, porNombre = {}, {}
+    for r in U:
+        mun = (r.get("Municipio") or "").strip()
+        edo = (r.get("Estado") or "").strip()
+        per = (r.get("Permiso CRE") or "").strip()
+        if not mun or mun == "No especificado":
+            continue
+        porPlaza.setdefault((edo, mun), set()).add(per)
+        porNombre.setdefault(mun, set()).add(edo)
+
+    chips = dat.get("plazas") or []
+    malas = []
+    for c in chips:
+        mun, edo, n = c.get("muni") or "", c.get("estado") or "", c.get("n") or 0
+        real = len(porPlaza.get((edo, mun), set()))
+        if real and n != real:
+            malas.append("%s/%s: el chip dice %s y el clic entrega %s"
+                         % (mun, edo or "?", "{:,}".format(n), "{:,}".format(real)))
+    if malas:
+        R.add(CRITICO, "Funcional",
+              "El conteo de %d chip(s) de plaza no es el que su clic entrega"
+              % len(malas),
+              " | ".join(malas[:3]) + ". Se agrupó por nombre de municipio sin "
+              "el estado: los homónimos se suman y el clic filtra uno solo.", 25)
+    elif chips:
+        R.add(BIEN, "Funcional",
+              "Los %d chips de plaza prometen el parque que su clic entrega"
+              % len(chips))
+
+    colisionados = {m for m, edos in porNombre.items() if len(edos) > 1}
+    cmpd = dat.get("compare") or {}
+    etqs = cmpd.get("etiquetas") or []
+    ambiguas = [e for e in etqs if e in colisionados]
+    if ambiguas:
+        R.add(CRITICO, "Funcional",
+              "La comparativa pinta %d barra(s) con un nombre de municipio que "
+              "existe en varias entidades" % len(ambiguas),
+              "Sin el estado, la barra promedia plazas distintas: %s. "
+              "Es el error 25." % ", ".join(sorted(ambiguas)[:4]), 25)
+    elif etqs:
+        R.add(BIEN, "Funcional",
+              "Las %d barras de la comparativa identifican una plaza sin "
+              "ambigüedad" % len(etqs),
+              "%d nombre(s) de municipio del corte existen en dos o más "
+              "entidades." % len(colisionados))
+
+    # ------------------------------------------------------------------
+    #  P4 · el piso de estaciones de los extremos de la comparativa.
+    #
+    #  Se mide contra lo que el grafico pinto y el piso se toma del
+    #  SUBTITULO, que es la promesa que el usuario lee. Si el subtitulo
+    #  declara un piso, ninguna barra puede tener menos estaciones que el.
+    # ------------------------------------------------------------------
+    sub = cmpd.get("sub") or ""
+    m = re.search(r"con al menos (\d+) estaciones", sub)
+    if m and etqs:
+        piso = int(m.group(1))
+        ns = []
+        for e in (cmpd.get("ejes") or []):
+            mm = re.search(r"·\s*([\d,]+)\s*$", e)
+            if mm:
+                ns.append(int(mm.group(1).replace(",", "")))
+        if len(ns) != len(etqs):
+            # No se pudo leer un n por barra: callarse es mejor que gritar lobo.
+            pass
+        else:
+            bajos = [x for x in ns if x < piso]
+            if bajos:
+                R.add(CRITICO, "Funcional",
+                      "La comparativa declara un piso de %d estaciones y pinta "
+                      "%d barra(s) por debajo" % (piso, len(bajos)),
+                      "Valores: %s. El rótulo describe algo que el código no "
+                      "cumple (regla 1.6)." % sorted(bajos)[:5])
+            else:
+                R.add(BIEN, "Funcional",
+                      "El piso de la comparativa se cumple: %d barras, mínimo "
+                      "%d estaciones, piso declarado %d"
+                      % (len(ns), min(ns), piso))
+    elif etqs and "no se aplicó el piso" not in sub and "entre los" not in sub \
+            and "entre las" not in sub and len(etqs) >= 14:
+        R.add(ALERTA, "Funcional",
+              "La comparativa recorta a 14 barras sin declarar el piso",
+              "El subtítulo dice «%s». P4: un piso silencioso es tan malo como "
+              "el ruido que quita." % sub[:120])
 
 
 
