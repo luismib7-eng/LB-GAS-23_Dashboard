@@ -4224,10 +4224,20 @@ window.APP_CONFIG = {
     base.forEach(function (r) { if (r.estado) estados[r.estado] = true; });
     var clave = Object.keys(estados).length >= 2 ? "estado" : "municipio";
 
-    var grupos = {}, vistos = {};
+    /* P5. El panorama agrupa por entidad, asi que las estaciones cuyo Estado
+       llega vacio en la fuente quedaban fuera SIN decirlo: el subtitulo decia
+       "13,824 estaciones" y el Explorador "13,844" en el mismo corte, y nada
+       en pantalla explicaba la diferencia de 20. Las dos cifras eran correctas;
+       faltaba la declaracion. Mismo patron que el P1 cerrado el 16 de
+       noviembre. Se cuentan por permiso, no por registro: contar filas las
+       multiplicaria por los 7 cortes, que es el error recurrente 6/15/18/21/22. */
+    var grupos = {}, vistos = {}, fuera = {}, nFuera = 0;
     base.forEach(function (r) {
       var k = r[clave];
-      if (!k) return;
+      if (!k) {
+        if (!fuera[r.permiso]) { fuera[r.permiso] = true; nFuera++; }
+        return;
+      }
       var g = grupos[k] || (grupos[k] = { regular: [], premium: [], diesel: [], n: 0, estado: r.estado || "" });
       var id = k + "|" + r.permiso;
       if (!vistos[id]) { vistos[id] = true; g.n++; }
@@ -4241,7 +4251,7 @@ window.APP_CONFIG = {
       return { k: k, n: g.n, estado: g.estado,
                regular: avg(g.regular), premium: avg(g.premium), diesel: avg(g.diesel) };
     });
-    return { clave: clave, corte: corte, lista: lista };
+    return { clave: clave, corte: corte, lista: lista, fuera: nFuera };
   }
 
   function renderPanorama() {
@@ -4277,7 +4287,12 @@ window.APP_CONFIG = {
 
     $("panoramaSub").textContent = "Corte " + (datos.corte ? fmtPeriod(datos.corte) : "vigente") +
       " · " + lista.length.toLocaleString("es-MX") + " " + (nivel === "estado" ? "entidades" : "municipios") +
-      " · " + totalEst.toLocaleString("es-MX") + " estaciones";
+      " · " + totalEst.toLocaleString("es-MX") + (totalEst === 1 ? " estación" : " estaciones") +
+      (datos.fuera
+        ? " · " + datos.fuera.toLocaleString("es-MX") +
+          (datos.fuera === 1 ? " estación sin " : " estaciones sin ") + nivel +
+          " en la fuente, fuera de esta tabla"
+        : "");
 
     $("panoramaHead").innerHTML = "<tr>" +
       "<th>" + (nivel === "estado" ? "Estado" : "Municipio") + "</th>" +
@@ -4332,17 +4347,32 @@ window.APP_CONFIG = {
       if (corte && r.fecha !== corte) return;
       if (!r.municipio) return;
       if (state.estado && state.estado !== SIN_UBICACION && r.estado !== state.estado) return;
-      var id = r.municipio + "|" + r.permiso;
+      /* ERROR 25. La llave era solo el nombre del municipio. A nivel nacional
+         el chip de "Juárez" sumaba las 232 estaciones de los cuatro municipios
+         homónimos —Chihuahua 185, Nuevo León 43, Chiapas 3, Michoacán 1— y al
+         hacer clic filtraba uno solo y entregaba 185. El chip prometía 25% más
+         parque del que el clic entrega, y el destino era el municipio del
+         primer registro visto, no el que el conteo describe. */
+      var llave = (r.estado || "?") + "\u00BB" + r.municipio;
+      var id = llave + "|" + r.permiso;
       if (vistos[id]) return;
       vistos[id] = true;
-      var c = cuenta[r.municipio] || (cuenta[r.municipio] = { n: 0, estado: r.estado || "" });
+      var c = cuenta[llave] || (cuenta[llave] = { n: 0, m: r.municipio, estado: r.estado || "" });
       c.n++;
     });
-    return Object.keys(cuenta).map(function (m) {
-      return { m: m, n: cuenta[m].n, estado: cuenta[m].estado };
+    var lista = Object.keys(cuenta).map(function (llave) {
+      return { m: cuenta[llave].m, n: cuenta[llave].n, estado: cuenta[llave].estado };
     }).sort(function (a, b) {
       return b.n - a.n || a.m.localeCompare(b.m, "es");
     }).slice(0, max || 8);
+    /* Si dos homónimos entran al tope, el chip lleva el estado: dos botones con
+       la misma etiqueta y distinto destino son el error 23 en otra forma. */
+    var veces = {};
+    lista.forEach(function (x) { veces[x.m] = (veces[x.m] || 0) + 1; });
+    lista.forEach(function (x) {
+      x.etq = (veces[x.m] > 1 && x.estado) ? x.m + ", " + x.estado : x.m;
+    });
+    return lista;
   }
 
   function renderPlazas() {
@@ -4353,15 +4383,24 @@ window.APP_CONFIG = {
     bar.hidden = false;
     bar.innerHTML = '<span class="plazas__label">Plazas de mayor parque</span>' +
       lista.map(function (x) {
-        return '<button class="plaza' + (state.municipio === x.m ? " is-active" : "") +
+        var activo = state.municipio === x.m &&
+                     (!x.estado || !state.estado || state.estado === x.estado);
+        return '<button class="plaza' + (activo ? " is-active" : "") +
                '" type="button" data-plaza="' + esc(x.m) + '" data-plaza-estado="' + esc(x.estado) + '" ' +
-               'title="' + x.n.toLocaleString("es-MX") + ' estaciones en ' + esc(x.m) + '">' +
-               esc(x.m) + '<span class="plaza__n">' + x.n.toLocaleString("es-MX") + "</span></button>";
+               'title="' + x.n.toLocaleString("es-MX") +
+               (x.n === 1 ? ' estación en ' : ' estaciones en ') + esc(x.etq) + '">' +
+               esc(x.etq) + '<span class="plaza__n">' + x.n.toLocaleString("es-MX") + "</span></button>";
       }).join("");
   }
 
   function aplicarPlaza(muni, estado) {
-    if (state.municipio === muni) {
+    /* ERROR 25, tercer sitio, hallado en la lectura profunda del 23 de
+       noviembre de 2026. El alternador comparaba SOLO el nombre: con
+       Juárez/Chihuahua activo, un clic en un chip de Juárez/Nuevo León
+       apagaba el filtro en lugar de cambiar de plaza. Hoy dos homónimos rara
+       vez entran los dos al tope de ocho, así que no estaba en pantalla; es
+       el mismo defecto de identidad y se cierra con los otros dos. */
+    if (state.municipio === muni && (!estado || state.estado === estado)) {
       state.municipio = "";
     } else {
       if (estado && state.estado !== estado) {
@@ -4645,15 +4684,49 @@ window.APP_CONFIG = {
           : "La fuente no incluye región, estado ni municipio: se comparan estaciones individuales.")
       : "Promedio de " + PRODUCTS[p].label + " en cada " + dim.label.toLowerCase() + ".";
 
-    var groups = {};
+    /* ERROR 25. La llave de agrupacion era el NOMBRE del grupo. Con la
+       dimension municipio eso funde plazas homonimas de estados distintos.
+       Medido en el corte del 22 de noviembre de 2026: 104 nombres de municipio
+       existen en dos o mas entidades y arrastran 3,323 estaciones, el 24% del
+       padron con precio de Regular. El caso que lo delata es "Juarez": la
+       barra promediaba Ciudad Juarez, Chihuahua ($19.21, 185 estaciones de la
+       Zona Libre) con Juarez, Nuevo Leon ($23.97, 43 estaciones del area de
+       Monterrey) mas Chiapas y Michoacan, y pintaba $20.16 — que no es ninguno
+       de los cuatro municipios. Aparecia en los 7 mas baratos, sin necesidad
+       de tocar nada. Regla 1.1: una cifra que no se puede trazar a una plaza
+       real no se muestra.
+
+       Ahora la llave lleva el estado y la etiqueta lo declara cuando el nombre
+       se repite en la seleccion. Las estaciones sin entidad en la fuente ya no
+       se amontonan en un grupo "Sin clasificar" que compite como si fuera un
+       municipio: quedan fuera y el subtitulo lo dice. */
+    var geoDim = dim.key === "municipio" || dim.key === "estado" || dim.key === "region";
+    var groups = {}, sinGeo = {}, nSinGeo = 0;
     rows.forEach(function (r) {
       if (r[p] === null) return;
-      var k = r[dim.key] || (dim.key === "estacion" ? r.permiso : "Sin clasificar");
-      if (!k) return;
-      (groups[k] = groups[k] || []).push(r[p]);
+      var nombre = r[dim.key];
+      if (geoDim && !nombre) {
+        if (!sinGeo[r.permiso]) { sinGeo[r.permiso] = true; nSinGeo++; }
+        return;
+      }
+      if (!nombre) nombre = dim.key === "estacion" ? r.permiso : "Sin clasificar";
+      if (!nombre) return;
+      var llave = dim.key === "municipio" ? (r.estado || "?") + "\u00BB" + nombre : nombre;
+      var g = groups[llave] || (groups[llave] = { nombre: nombre, estado: r.estado || "", v: [] });
+      g.v.push(r[p]);
     });
-    var list = Object.keys(groups).map(function (k) {
-      return { k: k, v: avg(groups[k]), n: groups[k].length };
+    /* Un nombre presente en dos entidades de la seleccion se etiqueta con su
+       estado; si es unico, la etiqueta queda corta. */
+    var vecesNombre = {};
+    Object.keys(groups).forEach(function (llave) {
+      var nb = groups[llave].nombre;
+      vecesNombre[nb] = (vecesNombre[nb] || 0) + 1;
+    });
+    var list = Object.keys(groups).map(function (llave) {
+      var g = groups[llave];
+      var etq = (dim.key === "municipio" && vecesNombre[g.nombre] > 1 && g.estado)
+        ? g.nombre + ", " + g.estado : g.nombre;
+      return { k: etq, v: avg(g.v), n: g.v.length };
     }).sort(function (a, b) { return b.v - a.v; });
 
     if (list.length < 2) {
@@ -4662,8 +4735,33 @@ window.APP_CONFIG = {
       return;
     }
     el.hidden = true;
-    var trimmed = false;
+    var trimmed = false, pisoAplicado = 0, universo = list.length, pasanPiso = 0;
     if (list.length > 14) {
+      /* P4, decidido el 17 de noviembre de 2026. El problema nace AQUI y solo
+         aqui: es la rama donde se eligen 7 y 7 de un universo grande. Con 14
+         grupos o menos se muestran todos y no hay ranking que distorsionar.
+
+         Sin piso, los extremos los ocupan municipios de uno o dos expendios:
+         medido el 17 de noviembre, 8 de los 14 extremos tenian menos de 5
+         estaciones y 4 tenian exactamente una. Debajo de ese ruido esta la
+         estructura que si explica algo — la franja fronteriza norte abajo por
+         el IVA al 8% y los estimulos de IEPS de la Zona Libre, turismo y
+         sierra aislada arriba.
+
+         El piso es ADAPTATIVO: solo se aplica si al menos 14 grupos lo pasan,
+         para no desfondar a un estado de poco parque (Tlaxcala tiene 40
+         municipios y solo 8 llegan a 5 estaciones). Y se DECLARA en el
+         subtitulo en los dos casos: un piso silencioso es tan malo como el
+         ruido que quita.
+
+         Por que 5 y no 3 ni 10: con piso 2 pasan promedios de dos expendios,
+         que siguen siendo un volado; con 5 se conserva el 86.7% de las
+         estaciones y la lista se vuelve interpretable; con 8 baja a 79.5% y
+         empieza a borrar plazas chicas legitimas que si interesan. */
+      var conPiso = list.filter(function (d) { return d.n >= PISO_COMPARA; });
+      pasanPiso = conPiso.length;
+      if (pasanPiso >= 14) { list = conPiso; pisoAplicado = PISO_COMPARA; }
+      universo = list.length;
       list = list.slice(0, 7).concat(list.slice(-7));
       trimmed = true;
       /* "Las 7 " + dim.label + "s" producía "Las 7 municipios", "Las 7 estados"
@@ -4672,9 +4770,37 @@ window.APP_CONFIG = {
       var plural = dim.key === "estacion" ? "estaciones"
                  : dim.key === "region" ? "regiones"
                  : dim.label.toLowerCase() + "s";
+      var art = fem ? "las " : "los ";
+      var cola;
+      if (pisoAplicado) {
+        cola = ", entre " + art + universo.toLocaleString("es-MX") +
+               " con al menos " + pisoAplicado + " estaciones.";
+      } else if (geoDim) {
+        cola = ", entre " + art + universo.toLocaleString("es-MX") +
+               " de la selección; no se aplicó el piso de " + PISO_COMPARA +
+               " estaciones porque solo " + pasanPiso + " lo pasan.";
+      } else {
+        cola = ".";
+      }
+      /* H2, hallado el 23 de noviembre de 2026: esta rama añadía "La fuente no
+         incluye región, estado ni municipio" SIN la guarda de hayGeo, que es
+         justo la afirmación falsa que se corrigió el 16 de noviembre en la otra
+         rama de esta misma función. Con Juárez, Chihuahua seleccionado —185
+         estaciones, así que la rama que recorta siempre entra— el tablero
+         negaba tener la ubicación que estaba usando para filtrar. Es el patrón
+         de los errores 21 y 24: la corrección fue a un camino y no al otro. */
+      if (dim.key === "estacion" && !hayGeo) {
+        cola = ". La fuente no incluye región, estado ni municipio.";
+      }
       $("compareSub").textContent = (fem ? "Las 7 " : "Los 7 ") + plural +
-        " con el precio más alto y " + (fem ? "las 7" : "los 7") + " con el más bajo de " + PRODUCTS[p].label +
-        (dim.key === "estacion" ? ". La fuente no incluye región, estado ni municipio." : ".");
+        " con el precio más alto y " + (fem ? "las 7" : "los 7") + " con el más bajo de " +
+        PRODUCTS[p].label + cola;
+    }
+    /* La exclusión se declara en las dos ramas, recorte o no. */
+    if (geoDim && nSinGeo) {
+      $("compareSub").textContent += " " + nSinGeo.toLocaleString("es-MX") +
+        (nSinGeo === 1 ? " estación sin " : " estaciones sin ") + dim.label.toLowerCase() +
+        " en la fuente" + (nSinGeo === 1 ? " queda" : " quedan") + " fuera de la comparación.";
     }
 
     var t = chartTheme();
@@ -4682,9 +4808,16 @@ window.APP_CONFIG = {
     opts.indexAxis = "y";
     opts.plugins.legend.display = false;
     opts.scales.x.ticks.callback = function (v) { return "$" + Number(v).toFixed(2); };
-    opts.scales.y.ticks.callback = function (v) {
+    /* P4 punto 3: el n va en la etiqueta, no solo en el tooltip. Un promedio
+       sobre 6 estaciones y uno sobre 231 no se leen igual y el usuario tiene
+       que poder verlo sin pasar el cursor —en un teléfono no hay cursor que
+       pasar—. Se escribe aquí y no con un plugin de etiquetas para no agregar
+       una librería a una compilación que debe abrir como archivo estático. */
+    opts.scales.y.ticks.callback = function (v, i) {
       var s = this.getLabelForValue(v);
-      return s.length > 26 ? s.slice(0, 25) + "…" : s;
+      if (s.length > 20) s = s.slice(0, 19) + "…";
+      var d = list[i];
+      return d ? s + " · " + d.n.toLocaleString("es-MX") : s;
     };
     opts.scales.x.beginAtZero = false;
     opts.plugins.tooltip.callbacks.label = function (ctx) {
@@ -4872,7 +5005,8 @@ window.APP_CONFIG = {
     if (!list.length) $("emptyTable").textContent = "Sin resultados. Ajusta la búsqueda o los filtros.";
     var head = $("spreadHead");
     if (head) head.childNodes[0].nodeValue = "Δ " + PRODUCTS[p].label + " vs. local ";
-    $("tableCount").textContent = list.length.toLocaleString("es-MX") + " estaciones listadas · " +
+    $("tableCount").textContent = list.length.toLocaleString("es-MX") +
+      (list.length === 1 ? " estación listada" : " estaciones listadas") + " · " +
       (state.period ? fmtPeriod(state.period) : "todos los periodos") +
       (state.municipio ? " · " + (state.municipio === SIN_UBICACION ? "sin municipio" : state.municipio) : "") +
       (state.estado ? " · " + (state.estado === SIN_UBICACION ? "sin ubicación" : state.estado) : "") +
@@ -5011,6 +5145,11 @@ window.APP_CONFIG = {
   var SIN_DATO_TXT = "No especificado";
   var COMP_MAX = 8;
 
+  /* Minimo de estaciones para que un grupo compita en el ranking de extremos
+     de la comparativa. Solo se aplica en la rama que recorta a 7 y 7, y solo
+     si al menos 14 grupos lo pasan (P4, 17 de noviembre de 2026). */
+  var PISO_COMPARA = 5;
+
   /* ---------------------------------------------------------
      Agrupación por operador: registros y estaciones NO son lo mismo
 
@@ -5131,7 +5270,7 @@ window.APP_CONFIG = {
     if (nota) {
       nota.textContent = "Quién marca el precio y quién reacciona, dentro de " +
         (CFG.RADIO_KM || 5) + " km · " + total.toLocaleString("es-MX") +
-        " estaciones en la selección";
+        (total === 1 ? " estación" : " estaciones") + " en la selección";
     }
     if (pie) {
       pie.textContent = "El padrón se publica una vez al día, así que no se puede saber " +
@@ -5197,13 +5336,25 @@ window.APP_CONFIG = {
       nota.textContent = esc(t.label) + " · " + PRODUCTS[prod].label +
         " · compromiso de precio al público menor a " + money(t.valor) +
         (t.vigencia ? " · " + t.vigencia : "") +
-        " · " + n.toLocaleString("es-MX") + " estaciones en la selección";
+        " · " + n.toLocaleString("es-MX") + (n === 1 ? " estación" : " estaciones") +
+        " en la selección";
     }
     if (pie) {
+      /* H3, 23 de noviembre de 2026: con una sola estación en la selección la
+         frase salía "el incumplimiento de la selección es 100.0% y no 100.0%",
+         que no dice nada y parece un error de cálculo. El contraste solo tiene
+         sentido cuando hay estaciones justo en el tope Y las dos lecturas
+         difieren una vez redondeadas. */
+      var pEstricta = pct(fuera + justo), pLaxa = pct(fuera);
       pie.textContent =
         "El compromiso dice \u201cmenor a\u201d, no \u201chasta\u201d: una estación que publica " +
-        money(t.valor) + " exacto no lo cumple. Sumando ese grupo, el incumplimiento " +
-        "de la selección es " + pct(fuera + justo) + " y no " + pct(fuera) + ". " +
+        money(t.valor) + " exacto no lo cumple. " +
+        (!justo
+          ? "En esta selección ninguna estación publica " + money(t.valor) + " exacto. "
+          : pEstricta !== pLaxa
+            ? "Sumando ese grupo, el incumplimiento de la selección es " + pEstricta +
+              " y no " + pLaxa + ". "
+            : "Sumando ese grupo, el incumplimiento de la selección es " + pEstricta + ". ") +
         "Es un pacto voluntario, no una norma sancionable: el riesgo es reputacional " +
         "y comercial, no una multa. En la Zona Libre de la Frontera Norte el IVA al 8% " +
         "y los estímulos de IEPS producen precios legítimamente menores.";
@@ -5903,7 +6054,8 @@ window.APP_CONFIG = {
     });
 
     $("mapSub").textContent = "Semáforo de " + PRODUCTS[prod].label +
-      " · " + visibles.length.toLocaleString("es-MX") + " estaciones en pantalla" +
+      " · " + visibles.length.toLocaleString("es-MX") +
+      (visibles.length === 1 ? " estación" : " estaciones") + " en pantalla" +
       (propias.length ? " · " + propias.length + " propia(s) con radio de " + radio + " km" : "");
 
     $("mapNota").textContent = recortado
